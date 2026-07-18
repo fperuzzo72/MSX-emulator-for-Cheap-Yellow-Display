@@ -1,0 +1,18 @@
+fMSX (Z80 core, MSX core, EMULib) - Marat Fayzullin
+=====================================================
+Source: lib/fmsx_core/Z80/, lib/fmsx_core/fMSX/, lib/fmsx_core/EMULib/
+
+These files carry Marat Fayzullin's standard fMSX/EMULib header notice,
+repeated in (almost) every source file:
+
+    Copyright (C) Marat Fayzullin 1994-2021 (dates vary per file)
+    You are not allowed to distribute this software commercially.
+    Please, notify me, if you make any changes to this file.
+
+In plain terms: free for personal/non-commercial use and modification,
+not for commercial redistribution, and Fayzullin asks to be notified of
+changes. This is NOT an OSI-approved open-source license. If you plan to
+do anything beyond personal/hobby use with this project, verify the exact
+terms in each file's header and contact the author as requested.
+
+Homepage (last known): https://fms.komkon.org/fMSX/
