@@ -1,0 +1,53 @@
+name: Build firmware
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Cache PlatformIO packages/toolchains
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO Core
+        run: pip install --upgrade platformio
+
+      - name: Build firmware (env: fnk0103)
+        run: pio run -e fnk0103
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fnk0103-msx-firmware
+          # bootloader.bin + partitions.bin + firmware.bin are everything
+          # esptool needs to flash from scratch; firmware.elf is handy for
+          # debugging crash backtraces (not needed to flash).
+          path: |
+            .pio/build/fnk0103/firmware.bin
+            .pio/build/fnk0103/firmware.elf
+            .pio/build/fnk0103/bootloader.bin
+            .pio/build/fnk0103/partitions.bin
+          if-no-files-found: error
+          retention-days: 30

@@ -1,5 +1,7 @@
 # FNK0103 MSX1 emulator + BLE keyboard
 
+[![Build firmware](https://github.com/fperuzzo72/MSX-emulator-for-Cheap-Yellow-Display/actions/workflows/build.yml/badge.svg)](https://github.com/fperuzzo72/MSX-emulator-for-Cheap-Yellow-Display/actions/workflows/build.yml)
+
 MSX1 emulator (fMSX/Z80 core) for the Freenove FNK0103 3.5" ESP32 display
 ("Cheap Yellow Display"-style board, ST7796 panel), with input from a
 Bluetooth Low Energy keyboard instead of the touchscreen.
@@ -60,7 +62,42 @@ fit in the ~520KB of internal SRAM without needing PSRAM. If your board
 does turn out to have PSRAM, you'll just have more headroom (useful if
 you add sound or bump RAMPages later).
 
-## Building and flashing
+## Building via GitHub Actions (no toolchain on your machine)
+
+Every push to `main` (and every PR) triggers `.github/workflows/build.yml`,
+which builds the firmware on GitHub's runners with PlatformIO. You don't
+need PlatformIO, the ESP32 toolchain, or anything else installed locally
+just to get a flashable binary:
+
+1. Push a commit (or open the **Actions** tab and run the "Build firmware"
+   workflow manually via **Run workflow**).
+2. Once it's green, open that run and download the `fnk0103-msx-firmware`
+   artifact (zip containing `firmware.bin`, `bootloader.bin`,
+   `partitions.bin`, and `firmware.elf`).
+3. Flash it with [esptool](https://github.com/espressif/esptool) (a small
+   Python tool - much lighter than installing all of PlatformIO):
+
+   ```bash
+   pip install esptool
+   unzip fnk0103-msx-firmware.zip -d firmware
+   esptool.py --chip esp32 --port /dev/cu.usbserial-XXXX --baud 921600 \
+     write_flash \
+     0x1000  firmware/bootloader.bin \
+     0x8000  firmware/partitions.bin \
+     0x10000 firmware/firmware.bin
+   ```
+
+   Replace `/dev/cu.usbserial-XXXX` with your board's serial port (check
+   `ls /dev/cu.*` on macOS while it's plugged in, or Device Manager's COM
+   port on Windows). Those three flash offsets (`0x1000`/`0x8000`/`0x10000`)
+   are the standard Arduino-ESP32 layout this project's `huge_app.csv`
+   partition table uses.
+
+You still need a serial connection to the board to flash it and to watch
+the boot log (`pio device monitor` or any serial terminal at 115200 baud) -
+GitHub Actions only handles the *compiling*, not the flashing.
+
+## Building and flashing locally
 
 1. Install [PlatformIO](https://platformio.org/) (VS Code extension, or
    `pip install platformio` for the CLI).
