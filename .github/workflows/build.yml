@@ -34,7 +34,7 @@ jobs:
       - name: Install PlatformIO Core
         run: pip install --upgrade platformio
 
-      - name: Build firmware (env: fnk0103)
+      - name: "Build firmware (env: fnk0103)"
         run: pio run -e fnk0103
 
       - name: Upload firmware artifact
