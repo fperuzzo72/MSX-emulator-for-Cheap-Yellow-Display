@@ -19,3 +19,23 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+-------------------------------------------------------------------------------
+NOTE ON SCOPE
+
+This MIT license covers the original code in this repository (the platform
+glue: display bridge, BLE keyboard host, SD/BIOS loading, build config, etc).
+
+It does NOT cover the third-party MSX emulator core vendored under
+lib/fmsx_core/ (Z80, fMSX, EMULib), which is Marat Fayzullin's fMSX/EMULib
+and carries its own, more restrictive terms: free for personal/non-commercial
+use, not licensed for commercial redistribution. See
+third_party_licenses/fmsx_and_emulib.txt for the exact wording, and
+third_party_licenses/ generally for the other vendored pieces (C-BIOS,
+the ESPlay-fMSX video glue, the BLE_HID_Client pattern) and their own
+licenses.
+
+In short: this repo is not "all MIT" - only Fabricio Stefani Peruzzo's own
+code is. Building this for yourself is fine; selling it or redistributing
+it commercially is not, without separately clearing that with Marat
+Fayzullin.

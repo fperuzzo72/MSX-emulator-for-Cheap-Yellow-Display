@@ -4,6 +4,13 @@ MSX1 emulator (fMSX/Z80 core) for the Freenove FNK0103 3.5" ESP32 display
 ("Cheap Yellow Display"-style board, ST7796 panel), with input from a
 Bluetooth Low Energy keyboard instead of the touchscreen.
 
+> **License note:** the `LICENSE` file in this repo (MIT) covers only the
+> original glue code written for this project. The vendored MSX emulator
+> core (`lib/fmsx_core/`) is under Marat Fayzullin's fMSX/EMULib license,
+> which is personal-use-only, not commercial-redistribution-friendly. See
+> "Licensing" below and `LICENSE`'s "NOTE ON SCOPE" section before you do
+> anything beyond building this for yourself.
+
 **Status: written and cross-checked against real, working reference
 projects and verified library APIs, but NOT compiled or flashed on real
 hardware.** The sandbox this was built in couldn't download the ESP32
@@ -153,8 +160,10 @@ of those specifically and want it added.
 
 ## Licensing (this matters if you do anything beyond personal hobby use)
 
-This project vendors and adapts several other people's code. See
-`third_party_licenses/` for full texts:
+The `LICENSE` file (MIT) at the repo root covers only the original code
+written for this project - it is **not** a blanket license for everything
+in the repo. This project vendors and adapts several other people's code.
+See `third_party_licenses/` for full texts:
 
 - `lib/fmsx_core/{Z80,fMSX,EMULib}`: Marat Fayzullin's fMSX/EMULib -
   **free for personal use, NOT for commercial redistribution** (his
