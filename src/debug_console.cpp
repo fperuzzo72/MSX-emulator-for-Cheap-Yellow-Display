@@ -15,8 +15,10 @@
 #include "msx_keys.h"
 #include "ble_keyboard.h"
 
-extern "C" void display_test_pattern(int which);
+extern "C" void display_request_test_pattern(int which);
 extern "C" void display_set_swap_bytes(int on);
+extern "C" void display_set_scale(int scale);
+extern "C" int  display_get_scale(void);
 
 /* The handful of MSX international-charset codes worth naming when they
  * turn up in a screen dump; everything else prints as its hex code. */
@@ -108,9 +110,19 @@ static void handleLine(char *line) {
         case 'x': {
             int which = 0;
             sscanf(line + 1, "%d", &which);
-            display_test_pattern(which);
+            display_request_test_pattern(which);
             Serial.printf("test pattern %d drawn (0 black, 1 red, 2 green, 3 blue, "
                           "4 white block via TFT_eSPI, 5 same block via the emulator's path)\n", which);
+            break;
+        }
+        case 'z': {
+            int scale = 0;
+            if (sscanf(line + 1, "%d", &scale) != 1 || (scale != 1 && scale != 2))
+                scale = display_get_scale() == 1 ? 2 : 1;   /* bare 'z' toggles */
+            display_set_scale(scale);
+            Serial.printf("picture scale %s\n",
+                          scale == 1 ? "1:1 (256x216, crisp, small)"
+                                     : "1.5x (384x324, nearly full screen)");
             break;
         }
         case 'w': {
@@ -137,7 +149,7 @@ static void handleLine(char *line) {
         }
         case '?':
         default:
-            Serial.println("s=screen  t <text>=type  d=dead-key probe  g <code>=glyph  x <n>=test pattern  w <0|1>=byte swap  h=status");
+            Serial.println("s=screen  t <text>=type  d=dead-key probe  g <code>=glyph  z [1|2]=picture scale  x <n>=test pattern  w <0|1>=byte swap  h=status");
             break;
     }
 }

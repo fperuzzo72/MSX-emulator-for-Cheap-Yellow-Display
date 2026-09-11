@@ -257,8 +257,7 @@ static uint16_t *CurrentPalette(void) {
 /* Push the rows accumulated in the band to the panel. */
 static void FlushBand(void) {
     if (bandTop >= 0 && bandFill > 0)
-        display_write_frame_msx(MSX_DISPLAY_X, MSX_DISPLAY_Y + bandTop,
-                                WIDTH, bandFill, msxFramebuffer,
+        display_write_frame_msx(0, bandTop, WIDTH, bandFill, msxFramebuffer,
                                 XPal[BGColor], CurrentPalette());
     bandTop = -1;
     bandFill = 0;
@@ -268,8 +267,8 @@ static void FlushBand(void) {
  * straight to the panel instead of through the band. */
 static void FillRows(int top, int rows, uint8_t colorIndex) {
     if (rows <= 0) return;
-    display_write_frame_msx(MSX_DISPLAY_X, MSX_DISPLAY_Y + top, WIDTH, rows,
-                            NULL, CurrentPalette()[colorIndex], CurrentPalette());
+    display_write_frame_msx(0, top, WIDTH, rows, NULL,
+                            CurrentPalette()[colorIndex], CurrentPalette());
 }
 
 int InitVideo(void) {
@@ -326,7 +325,7 @@ int InitVideo(void) {
       XPal[15] = Black;
     
      // clear screen
-    display_write_frame_msx(0,0,WIDTH_OVERLAY,HEIGHT_OVERLAY, NULL, XPal[BGColor], XPal);
+    display_fill_panel(XPal[BGColor]);
     
     
 
@@ -750,11 +749,14 @@ uint8_t *GetBuffer(register byte Y,register uint8_t C, register int M)
          * whole panel if the background colour changed, then lay down the
          * top border directly. */
         FlushBand();
+        display_service();   /* console-requested panel changes land here */
         FirstLine=(ScanLines212? 8:18)+VAdjust;
 
         if (VideoTaskCommand == 1 || lastBGColor != XPal[BGColor]) {
-            display_write_frame_msx(0, 0, WIDTH_OVERLAY, HEIGHT_OVERLAY, NULL,
-                                    XPal[BGColor], CurrentPalette());
+            /* Whole panel, not just the picture area: the surround has to
+             * be repainted too when the background colour changes or the
+             * picture scale is switched. */
+            display_fill_panel(XPal[BGColor]);
             lastBGColor = XPal[BGColor];
             VideoTaskCommand = 0;
         }

@@ -17,7 +17,25 @@
  * working driver for this same board (CYD-MicroBASIC-MicroWriter,
  * editor/src/main.cpp) default-constructs it too. */
 static TFT_eSPI tft;
-static uint16_t lineBuf[WIDTH_OVERLAY]; /* sized for the largest possible width param (full-screen clear) */
+static uint16_t lineBuf[WIDTH_OVERLAY];
+
+/* --- where the picture goes on the panel -------------------------
+ *
+ * The MSX draws 256x216; the panel is 480x320. At 1:1 that leaves a wide
+ * black surround: crisp, but small. At 1.5x the picture becomes 384x324
+ * and very nearly fills the panel, at the cost of every third column and
+ * row being a repeat. Neither is obviously right on a text machine, so
+ * both are here and `z` on the serial console switches between them.
+ * ---------------------------------------------------------------- */
+#define MSX_PIC_W 256
+#define MSX_PIC_H 216
+
+static int sScale = 1; /* 1 = one panel pixel per MSX pixel, 2 = three per two */
+
+static inline int destW(void)  { return sScale == 1 ? MSX_PIC_W : MSX_PIC_W * 3 / 2; }
+static inline int destH(void)  { return sScale == 1 ? MSX_PIC_H : MSX_PIC_H * 3 / 2; }
+static inline int destX0(void) { return (WIDTH_OVERLAY - destW()) / 2; }
+static inline int destY0(void) { return (HEIGHT_OVERLAY - destH()) / 2; } /* sized for the largest possible width param (full-screen clear) */
 
 /* TFT_eSPI sends a uint16_t buffer to the panel in the CPU's byte order
  * unless told otherwise, and the panel wants RGB565 the other way round.
@@ -33,6 +51,47 @@ extern "C" void display_set_swap_bytes(int on) {
 }
 
 extern "C" int display_get_swap_bytes(void) { return sSwapBytes ? 1 : 0; }
+
+extern "C" void display_request_test_pattern(int which);
+
+extern "C" void display_fill_panel(uint16_t color) { tft.fillScreen(color); }
+
+extern uint16_t VideoTaskCommand; /* AVideo.i: setting it to 1 asks for a full repaint */
+
+/* TFT_eSPI must be driven from ONE task. The serial console runs on core
+ * 0 and the emulator on core 1, so a console command that draws directly
+ * collides with the frame being blitted and wedges the SPI bus - which is
+ * exactly what the task watchdog caught the first time `z` was typed.
+ * Console commands therefore only leave a request here; display_service()
+ * carries it out at the top of a frame, on the emulation task. */
+static void drawTestPattern(int which);
+
+static volatile int sPendingScale   = 0;  /* 0 = nothing pending */
+static volatile int sPendingPattern = -1; /* -1 = nothing pending */
+
+extern "C" void display_set_scale(int scale) {
+    sPendingScale = (scale == 2) ? 2 : 1;
+}
+
+extern "C" int display_get_scale(void) {
+    return sPendingScale ? sPendingScale : sScale;
+}
+
+extern "C" void display_service(void) {
+    if (sPendingScale) {
+        sScale = sPendingScale;
+        sPendingScale = 0;
+        /* The old scale left pixels outside the new picture area. */
+        tft.fillScreen(TFT_BLACK);
+        VideoTaskCommand = 1;
+    }
+    if (sPendingPattern >= 0) {
+        int which = sPendingPattern;
+        sPendingPattern = -1;
+        drawTestPattern(which);
+        VideoTaskCommand = 1; /* let the emulator take the panel back */
+    }
+}
 
 void display_bridge_init() {
     /* Drive the backlight before anything else, the way the working
@@ -50,11 +109,11 @@ void display_bridge_init() {
 }
 
 /* Draw something known, straight to the panel, with the emulator out of
- * the picture. This separates the two things that both look like "garbage
+ * the picture. Runs on the emulation task via display_service(). This separates the two things that both look like "garbage
  * on screen": wrong geometry (the picture is in the wrong place, torn, or
  * the wrong size) and wrong colour order (the picture is in the right
  * place but every colour is nonsense). */
-extern "C" void display_test_pattern(int which) {
+static void drawTestPattern(int which) {
     switch (which) {
         case 0: tft.fillScreen(TFT_BLACK); break;
         case 1: tft.fillScreen(TFT_RED);   break;
@@ -85,8 +144,7 @@ extern "C" void display_test_pattern(int which) {
                 for (int y = 0; y < 24; y++)
                     for (int x = 0; x < WIDTH; x++)
                         band[y * WIDTH + x] = (uint8_t)(((top + y) / 8 + x / 16) & 0x0F);
-                display_write_frame_msx(MSX_DISPLAY_X, MSX_DISPLAY_Y + top, WIDTH, 24,
-                                        band, pal[0], pal);
+                display_write_frame_msx(0, top, WIDTH, 24, band, pal[0], pal);
             }
             break;
         }
@@ -94,28 +152,56 @@ extern "C" void display_test_pattern(int which) {
     }
 }
 
-extern "C" void display_write_frame_msx(short left, short top, short width, short height,
+/* Blit a horizontal slice of the MSX picture. `srcY` and `height` are in
+ * MSX picture rows, not panel rows: where that lands on the panel and at
+ * what size is this file's business and nobody else's. A NULL buffer is a
+ * flat fill of bgColor, which is how the borders are drawn. */
+extern "C" void display_write_frame_msx(short srcX, short srcY, short width, short height,
                                          const uint8_t *buffer, uint16_t bgColor,
                                          const uint16_t *palette) {
+    (void)srcX; /* every caller blits full-width slices */
     if (width <= 0 || height <= 0) return;
-    if (width > WIDTH_OVERLAY) width = WIDTH_OVERLAY; /* clamp defensively; should never trigger */
+
+    const int dy0 = destY0();
+    const int dw  = destW();
+    int first, last;
+
+    if (sScale == 1) {
+        first = dy0 + srcY;
+        last  = first + height;
+    } else {
+        first = dy0 + srcY * 3 / 2;
+        last  = dy0 + (srcY + height) * 3 / 2;
+    }
+    if (first < 0) first = 0;
+    if (last > HEIGHT_OVERLAY) last = HEIGHT_OVERLAY;
+    if (last <= first) return;
 
     tft.startWrite();
-    tft.setAddrWindow(left, top, width, height);
+    tft.setAddrWindow(destX0(), first, dw, last - first);
 
-    if (!buffer) {
-        /* Flat fill (screen clear / border). */
-        for (int i = 0; i < width; i++) lineBuf[i] = bgColor;
-        for (int y = 0; y < height; y++) {
-            tft.pushPixels(lineBuf, width);
+    for (int d = first; d < last; d++) {
+        if (!buffer) {
+            for (int i = 0; i < dw; i++) lineBuf[i] = bgColor;
+        } else {
+            /* At 1.5x every third destination row and column repeats the
+             * one before it. On a text screen that shows as slightly
+             * uneven letter widths, which is the whole reason 1:1 is still
+             * the default and this is switchable. */
+            int srcRow = (sScale == 1) ? (d - dy0) : ((d - dy0) * 2 / 3);
+            int rel = srcRow - srcY;
+            if (rel < 0) rel = 0;
+            if (rel >= height) rel = height - 1;
+            const uint8_t *row = buffer + (size_t)rel * width;
+            if (sScale == 1)
+                for (int x = 0; x < dw; x++) lineBuf[x] = palette[row[x]];
+            else
+                for (int x = 0; x < dw; x++) lineBuf[x] = palette[row[(x * 2) / 3]];
         }
-    } else {
-        for (int y = 0; y < height; y++) {
-            const uint8_t *row = buffer + (size_t)y * width;
-            for (int x = 0; x < width; x++) lineBuf[x] = palette[row[x]];
-            tft.pushPixels(lineBuf, width);
-        }
+        tft.pushPixels(lineBuf, dw);
     }
 
     tft.endWrite();
 }
+
+extern "C" void display_request_test_pattern(int which) { sPendingPattern = which; }

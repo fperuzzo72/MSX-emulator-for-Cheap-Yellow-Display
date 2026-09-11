@@ -47,6 +47,19 @@ void display_write_frame_msx(short left, short top, short width, short height,
                               const uint8_t *buffer, uint16_t bgColor,
                               const uint16_t *palette);
 
+/* Carry out any panel change the serial console asked for. Called at the
+ * top of a frame, on the emulation task, because TFT_eSPI may only be
+ * driven from one task. */
+void display_service(void);
+
+/* Fill the whole panel, surround included. */
+void display_fill_panel(uint16_t color);
+
+/* Picture scale: 1 = one panel pixel per MSX pixel, 2 = three panel
+ * pixels per two MSX pixels (1.5x, nearly full screen). */
+void display_set_scale(int scale);
+int  display_get_scale(void);
+
 /* Claim the framebuffer before the emulator allocates its RAM - see the
  * comment on the definition in video/AVideo.i. Returns non-zero on
  * success. Defined there, called from setup(). */
