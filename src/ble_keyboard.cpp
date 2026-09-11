@@ -43,14 +43,25 @@ static void notifyCB(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len,
 
 class KbdScanCallbacks : public NimBLEScanCallbacks {
     void onResult(const NimBLEAdvertisedDevice *dev) override {
-        if (!dev->haveServiceUUID() || !dev->isAdvertisingService(NimBLEUUID(HID_SERVICE_UUID)))
+        if (!dev->haveServiceUUID() || !dev->isAdvertisingService(NimBLEUUID(HID_SERVICE_UUID))) {
+            /* Say what was seen and passed over. Pairing has never been
+             * tried on this board, so the first attempt should not have
+             * to guess why nothing happened - a keyboard that is
+             * Bluetooth Classic rather than BLE, for instance, never
+             * shows up here at all. */
+            static unsigned seen = 0;
+            if (++seen % 20 == 0)
+                Serial.printf("BLE: %u advertisements seen, none advertising HID yet\n", seen);
             return;
+        }
         /* Prefer something that says it is a keyboard, but accept a
          * generic HID or an unset appearance too - plenty of keyboards
          * never fill that field in. */
         uint16_t appearance = dev->getAppearance();
         if (appearance != 0x3C1 && appearance != 0x3C0 && appearance != 0) return;
 
+        Serial.printf("BLE: HID device %s (appearance 0x%04X), connecting\n",
+                      dev->getAddress().toString().c_str(), appearance);
         sTarget = dev->getAddress();
         sHaveTarget = true;
         NimBLEDevice::getScan()->stop();
@@ -64,6 +75,7 @@ class KbdClientCallbacks : public NimBLEClientCallbacks {
     void onDisconnect(NimBLEClient *c, int reason) override {
         (void)c; (void)reason;
         sConnected = false;
+        Serial.printf("BLE: disconnected (reason %d), scanning again\n", reason);
         portENTER_CRITICAL(&sReportMux);
         memset(sReport, 0, sizeof(sReport));
         portEXIT_CRITICAL(&sReportMux);
@@ -86,12 +98,17 @@ static bool connectToKeyboard() {
     client->setConnectTimeout(7000);
 
     if (!client->connect(sTarget)) {
+        Serial.println("BLE: connect failed");
         NimBLEDevice::deleteClient(client);
         return false;
     }
 
     NimBLERemoteService *hid = client->getService(HID_SERVICE_UUID);
-    if (!hid) { client->disconnect(); return false; }
+    if (!hid) {
+        Serial.println("BLE: connected but no HID service, dropping");
+        client->disconnect();
+        return false;
+    }
 
     /* Best effort: ask for boot protocol. Not every device exposes this. */
     NimBLERemoteCharacteristic *proto = hid->getCharacteristic(HID_PROTOCOL_MODE_UUID);
@@ -116,10 +133,14 @@ static bool connectToKeyboard() {
         }
     }
 
-    if (!subscribed) { client->disconnect(); return false; }
+    if (!subscribed) {
+        Serial.println("BLE: no report characteristic to subscribe to, dropping");
+        client->disconnect();
+        return false;
+    }
 
     sConnected = true;
-    Serial.println("BLE: keyboard connected");
+    Serial.printf("BLE: keyboard connected, free heap %u\n", (unsigned)ESP.getFreeHeap());
     return true;
 }
 
