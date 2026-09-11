@@ -1,0 +1,30 @@
+{
+  "name": "fmsx_core",
+  "version": "1.0.0",
+  "description": "Vendored fMSX/Z80/EMULib core plus the ESPlay video layer. See ../../third_party_licenses/ for the license of each piece.",
+  "build": {
+    "srcDir": ".",
+    "srcFilter": [
+      "+<Z80/Z80.c>",
+      "+<fMSX/MSX.c>",
+      "+<fMSX/V9938.c>",
+      "+<fMSX/I8251.c>",
+      "+<fMSX/Patch.c>",
+      "+<EMULib/AY8910.c>",
+      "+<EMULib/SCC.c>",
+      "+<EMULib/YM2413.c>",
+      "+<EMULib/I8255.c>",
+      "+<EMULib/WD1793.c>",
+      "+<EMULib/FDIDisk.c>",
+      "+<EMULib/Floppy.c>",
+      "+<EMULib/Hunt.c>",
+      "+<EMULib/IPS.c>",
+      "+<EMULib/MCF.c>",
+      "+<EMULib/SHA1.c>",
+      "+<EMULib/Sound.c>",
+      "+<video/video_glue.c>"
+    ],
+    "includeDir": ".",
+    "flags": ["-I Z80", "-I fMSX", "-I EMULib", "-I video"]
+  }
+}

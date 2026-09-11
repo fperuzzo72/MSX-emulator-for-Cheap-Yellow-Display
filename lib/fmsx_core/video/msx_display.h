@@ -47,6 +47,11 @@ void display_write_frame_msx(short left, short top, short width, short height,
                               const uint8_t *buffer, uint16_t bgColor,
                               const uint16_t *palette);
 
+/* Claim the framebuffer before the emulator allocates its RAM - see the
+ * comment on the definition in video/AVideo.i. Returns non-zero on
+ * success. Defined there, called from setup(). */
+int PreallocVideo(void);
+
 /* Defined in video/AVideo.i (via video_glue.c). Allocates the 8bpp
  * framebuffer + palettes and the FreeRTOS task that flushes frames to the
  * panel. Called from platform_glue.c InitMachine()/TrashMachine(). */

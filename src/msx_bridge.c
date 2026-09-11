@@ -1,0 +1,100 @@
+/* msx_bridge.c - the C side of the wall described in msx_bridge.h.
+ *
+ * Plain C, includes MSX.h, and must never include Arduino.h (see the
+ * `word` typedef note in msx_bridge.h). Anything that needs both worlds
+ * gets split across this file and a .cpp file.
+ */
+#include <string.h>
+#include "MSX.h"
+#include "Sound.h"
+#include "msx_bridge.h"
+#include "msx_display.h"
+
+#include "esp_heap_caps.h"
+
+/* Where the cartridge would come from if there were an SD card. With no
+ * card and no file, LoadROM() fails for the cartridge and the machine
+ * boots with no cartridge inserted - which on a real BIOS means
+ * MSX-BASIC, exactly what we want. */
+static const char *kGameRomPath = "/sdcard/msx/games/game.rom";
+
+int msx_video_prealloc(void) { return PreallocVideo(); }
+
+void msx_run(void) {
+    ROMName[0] = (char *)kGameRomPath;
+
+    /* Brazilian machines are PAL-M: PAL colour encoding on 60Hz/NTSC
+     * timing, so NTSC is the right choice for the emulated frame rate. */
+    Mode = MSX_MSX1 | MSX_NTSC;
+    /* 64kB, which is what a Hotbit HB-8000 has. This only fits because
+     * the video layer holds one 24-line band (6kB) instead of a whole
+     * frame (55kB) - see docs/MEMORY.md. */
+    RAMPages = 4;
+    VRAMPages = 1; /* 16KB: what a TMS9918 has, and all it can address */
+
+    /* The core never calls these itself: every fMSX port is expected to
+     * bring its own machine up before StartMSX() and tear it down after.
+     * Without InitMachine() the video layer is never initialised and
+     * ResetMSX() writes its palette through a NULL XPal. */
+    if (!InitMachine()) return;
+
+    /* Bring the mixer up before the machine starts writing to the PSG.
+     * 22050Hz mono is what audio_glue.c can keep fed while the same core
+     * is emulating a Z80 and pushing pixels; the latency figure is in
+     * milliseconds. */
+    {
+        unsigned int rate = InitSound(22050, 30);
+        printf("MSX: sound %s (%u Hz)\n", rate ? "on" : "OFF", rate);
+    }
+    StartMSX(Mode, RAMPages, VRAMPages);
+    TrashMSX();
+    TrashMachine();
+}
+
+void msx_kbd_write(const uint8_t state[16]) {
+    int i;
+    for (i = 0; i < 16; i++) KeyState[i] = state[i];
+}
+
+int msx_screen_mode(void) { return ScrMode; }
+
+int msx_screen_row(int row, uint8_t *out, int max) {
+    int cols, i;
+
+    /* SCREEN 0 is 40 columns, SCREEN 1 is 32; anything else is a bitmap
+     * mode with no character codes to read back. */
+    if (ScrMode == 0)      cols = 40;
+    else if (ScrMode == 1) cols = 32;
+    else                   return 0;
+
+    if (!ChrTab || row < 0 || row >= 24) return 0;
+    if (cols > max) cols = max;
+
+    for (i = 0; i < cols; i++) out[i] = ChrTab[row * (ScrMode == 0 ? 40 : 32) + i];
+    return cols;
+}
+
+volatile unsigned int MSXFrames = 0; /* incremented in platform_glue.c */
+
+unsigned int msx_frame_count(void) { return MSXFrames; }
+
+int msx_char_pattern(int code, uint8_t *rows8) {
+    int i;
+    if (!ChrGen || code < 0 || code > 255) return 0;
+    for (i = 0; i < 8; i++) rows8[i] = ChrGen[code * 8 + i];
+    return 1;
+}
+
+unsigned int msx_free_heap(void) {
+    return (unsigned int)heap_caps_get_free_size(MALLOC_CAP_8BIT);
+}
+
+unsigned int msx_largest_block(void) {
+    return (unsigned int)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+}
+
+volatile int MSXMemoryClaimed = 0; /* set from InitMachine(), see platform_glue.c */
+
+int msx_memory_claimed(void) { return MSXMemoryClaimed; }
+
+void msx_heap_report(void) { heap_caps_print_heap_info(MALLOC_CAP_8BIT); }

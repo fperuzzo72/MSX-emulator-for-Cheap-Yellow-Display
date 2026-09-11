@@ -13,30 +13,47 @@ Bluetooth Low Energy keyboard instead of the touchscreen.
 > "Licensing" below and `LICENSE`'s "NOTE ON SCOPE" section before you do
 > anything beyond building this for yourself.
 
-**Status: written and cross-checked against real, working reference
-projects and verified library APIs, but NOT compiled or flashed on real
-hardware.** The sandbox this was built in couldn't download the ESP32
-toolchain (network restrictions), so there was no way to build-test it
-here. Treat this as a strong, carefully-reasoned first draft: architecture
-and pin mappings are pulled from Freenove's own files, the emulator core
-is real vendored fMSX source (not reimplemented from scratch), and the
-BLE HID code follows a proven working pattern - but there will likely be
-at least a small compile error or two to fix on your first build. See
-"If something doesn't compile" below.
+**Status: running on real hardware.** It boots a Sharp/Epcom Hotbit
+HB-8000 BIOS into MSX-BASIC at 59-61 fps, with sound, with no SD card in
+the slot - the BIOS is embedded in the firmware. A BASIC program typed in
+through the US-International keyboard layer, accents and all, runs
+correctly.
+
+Everything above was verified over the USB cable rather than by looking at
+the panel: the firmware carries a small serial console that types into the
+emulated machine and reads its screen back out of the emulated VDP. See
+docs/KEYBOARD.md. The one thing still unverified is pairing an actual BLE
+keyboard, because there wasn't one in the room.
+
+Two documents are worth reading before changing anything:
+
+- **docs/MEMORY.md** - this board has no PSRAM, and fitting a 64kB MSX
+  into it drove several decisions that look strange out of context (the
+  BIOS executes from flash, the video layer keeps a 24-line band instead
+  of a frame, the allocation ordering in `setup()` matters).
+- **docs/KEYBOARD.md** - the Hotbit's key matrix is not the international
+  MSX one. The layout was read out of the BIOS ROM's own tables and the
+  dead keys were identified on the hardware.
 
 ## What's in the box
 
-- **MSX1 only** (not MSX2/MSX2+) - simpler, lower memory footprint, matches
-  this board's likely lack of PSRAM (see "Hardware notes").
-- **C-BIOS** (open-source MSX-compatible BIOS) embedded in flash as the
-  default boot ROM. C-BIOS is cartridge-only: it does **not** run
-  MSX-BASIC or floppy disks. Drop your own dumped BIOS ROM on the SD card
-  to override it (see "Using your own Brazilian BIOS ROM" below).
+- **MSX1 only** (not MSX2/MSX2+) - simpler, lower memory footprint, and
+  this board has no PSRAM (confirmed with `esptool flash-id`: ESP32-D0WD-V3,
+  4MB flash, no embedded PSRAM).
+- **64kB RAM, 16kB VRAM**, the same as a Hotbit HB-8000 and a TMS9918.
+- **BIOS embedded in flash.** If you have your own dumped MSX1 BIOS,
+  `python3 tools/embed_rom.py your.rom src/hotbit_bios_data.c` builds it
+  in and you get MSX-BASIC with no SD card at all. That generated file is
+  gitignored, as is the ROM it comes from - they are not distributed here.
+  Without one, the build falls back to **C-BIOS** (open source), which is
+  cartridge-only and does **not** run MSX-BASIC. An `MSX.ROM` on an SD
+  card overrides either.
 - **BLE keyboard input**, not the touchscreen. Boots up scanning for any
   BLE keyboard advertising the standard HID service and pairs with the
   first one it finds.
-- **No sound yet, no floppy disk, no joystick emulation.** See "Known
-  limitations."
+- **Sound** through the board's built-in DAC (I2S internal-DAC mode, the
+  same output Freenove's own MP3 example for this board uses).
+- **No floppy disk, no joystick emulation.** See "Known limitations."
 
 ## Hardware reference
 
@@ -51,7 +68,7 @@ just bundled under different product/firmware names.
 | TFT (ST7796, HSPI) | MISO 12, MOSI 13, SCLK 14, CS 15, DC 2, RST tied to EN (-1), BL 27 |
 | Touch (XPT2046, shares TFT SPI bus) | CS 33 (unused in this build) |
 | microSD (VSPI, separate bus) | SCK 18, MISO 19, MOSI 23, CS 5 |
-| Speaker (internal DAC / I2S) | not wired up in this build (no audio yet) |
+| Speaker (internal DAC / I2S) | I2S port 0 in built-in DAC mode (GPIO25/26) |
 
 Chip: **ESP32-WROOM-32E** (classic dual-core Xtensa LX6 @240MHz), **not**
 ESP32-S3. Freenove's own schematic/datasheet bundle for this board only

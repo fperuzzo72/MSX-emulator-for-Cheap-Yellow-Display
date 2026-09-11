@@ -51,7 +51,10 @@
 #include "MSX.h"
 #include "EMULib.h"
 
-#define VERBOSE_VIDEO
+/* Frame timing on the serial console. Handy while tuning the band
+ * buffer, deafening otherwise - the debug console's own output is
+ * unreadable with it on. Turn it back on with -D VERBOSE_VIDEO. */
+/* #define VERBOSE_VIDEO */
 /* WITH_OVERLAY intentionally disabled: it was the touch-driven virtual
  * keyboard overlay, unused here (real BLE keyboard instead), and its
  * framebuffer would cost ~300KB we do not have without PSRAM. */
@@ -179,7 +182,44 @@ static const struct {
 	       ((((uint16_t)r) << 8) & 0xf800)
 
 
-uint8_t* msxFramebuffer;
+/* --- band buffer -------------------------------------------------
+ *
+ * Upstream kept a whole 256x216 8bpp frame in RAM (55kB) and handed it to
+ * a second task to blit. This board cannot afford that: 55kB is the
+ * difference between the BLE stack fitting in what is left and not (see
+ * docs/MEMORY.md). So the renderer fills one horizontal band at a time
+ * and each band is pushed to the panel as soon as it is complete, which
+ * costs 6kB instead of 55kB.
+ *
+ * Blitting happens on the emulation task now, where the old videoTask
+ * used to overlap it with emulation. That costs some frame rate and buys
+ * back 49kB, which on a machine with no PSRAM is the right trade.
+ * ---------------------------------------------------------------- */
+#define FB_BAND_LINES 24
+
+uint8_t* msxFramebuffer;   /* WIDTH * FB_BAND_LINES, one band */
+static int bandTop  = -1;  /* absolute picture line held in row 0 of it */
+static int bandFill = 0;   /* rows written into the band so far         */
+
+/** PreallocVideo() ******************************************/
+/** Claim the framebuffer before anything else does.         **/
+/**                                                          **/
+/** This board has no PSRAM, and its DRAM is carved into      **/
+/** regions: one of about 110kB and a handful of smaller      **/
+/** ones. The framebuffer is the single biggest block the     **/
+/** emulator needs (WIDTH*HEIGHT bytes), so it has to be cut  **/
+/** from the big region FIRST. Allocated in InitVideo's       **/
+/** original position - after the emulated RAM and VRAM - the **/
+/** big region is already too chopped up and the malloc       **/
+/** fails, which upstream then walked straight into with a    **/
+/** memset on a NULL pointer.                                 **/
+/*************************************************************/
+int PreallocVideo(void) {
+    if (!msxFramebuffer)
+        msxFramebuffer = (uint8_t*)heap_caps_malloc(WIDTH*FB_BAND_LINES*sizeof(uint8_t),
+                                                    MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+    return msxFramebuffer != 0;
+}
 pixel* cursor;
 
 pixel* cursorBackGround;
@@ -188,11 +228,15 @@ int backGroundY = -1;
 int backGroundHeight = -1;
 int backGroundWidth = -1;
 
-QueueHandle_t videoQueue;
 uint16_t VideoTaskCommand = 1;
 static uint16_t* BPal;
 static uint16_t* XPal;
-static uint16_t XPal0; 
+static uint16_t XPal0;
+/* The original ESPlay port took `Black` from its own display driver
+ * header, which is not part of what was vendored here. It is just the
+ * RGB565 value for black. */
+#define Black ILI9341_COLOR(0,0,0)
+
 Image overlay;
 uint32_t FirstLine = 18;
 uint16_t lastLine = 0;
@@ -205,73 +249,48 @@ char flipScreen = 0;
 //////////////////////////////////////////////////////7
  
 
-void videoTask(void* arg)
-{
-    // sound
-  uint16_t* param;
- 
-  
- 
-  
-  while(1)
-  {
-    xQueuePeek(videoQueue, &param, portMAX_DELAY);
-    uint16_t* palette = XPal;
-    
-    if (ScrMode == 10 || ScrMode == 12 || ScrMode == 8) palette = BPal;
-    
-    if (VideoTaskCommand == 1 || lastBGColor != XPal[BGColor]) {// clear screen first
-       if (! showKeyboard) 
-         display_write_frame_msx(0,0,WIDTH_OVERLAY,HEIGHT_OVERLAY, NULL, XPal[BGColor], palette);
-       else
-         display_write_frame_msx(0,0,WIDTH_OVERLAY,HEIGHT_OVERLAY/2, NULL, XPal[BGColor], palette);
-       
-       lastBGColor = XPal[BGColor];
-     }
-     VideoTaskCommand = 0;
-  
-     if (! showKeyboard) {
-          display_write_frame_msx(MSX_DISPLAY_X, MSX_DISPLAY_Y  ,WIDTH,HEIGHT, msxFramebuffer, XPal[BGColor], palette);
-     } else {
-         if (! flipScreen)
-           display_write_frame_msx(MSX_DISPLAY_X, MSX_DISPLAY_Y  ,WIDTH,HEIGHT/2, msxFramebuffer, XPal[BGColor], palette);
-        else
-           display_write_frame_msx(MSX_DISPLAY_X, MSX_DISPLAY_Y  ,WIDTH,HEIGHT/2, msxFramebuffer + WIDTH*(HEIGHT/2), XPal[BGColor], palette);
-     }
-      
-    
-    xQueueReceive(videoQueue, &param, portMAX_DELAY);
-  }
-#ifdef VERBOSE_VIDEO
-  printf("videoTask: exiting.\n");
-#endif
-  
-
-  vTaskDelete(NULL);
-
-  while (1) {}
+/* Which palette the current screen mode reads through. */
+static uint16_t *CurrentPalette(void) {
+    return (ScrMode == 10 || ScrMode == 12 || ScrMode == 8) ? BPal : XPal;
 }
 
-///////////////////////////////////////////////////////
+/* Push the rows accumulated in the band to the panel. */
+static void FlushBand(void) {
+    if (bandTop >= 0 && bandFill > 0)
+        display_write_frame_msx(MSX_DISPLAY_X, MSX_DISPLAY_Y + bandTop,
+                                WIDTH, bandFill, msxFramebuffer,
+                                XPal[BGColor], CurrentPalette());
+    bandTop = -1;
+    bandFill = 0;
+}
 
+/* Borders above and below the picture are a flat colour, so they go
+ * straight to the panel instead of through the band. */
+static void FillRows(int top, int rows, uint8_t colorIndex) {
+    if (rows <= 0) return;
+    display_write_frame_msx(MSX_DISPLAY_X, MSX_DISPLAY_Y + top, WIDTH, rows,
+                            NULL, CurrentPalette()[colorIndex], CurrentPalette());
+}
 
 int InitVideo(void) {
-    videoQueue = xQueueCreate(1, sizeof(uint16_t*));
     
     BPal = heap_caps_malloc(256*sizeof(uint16_t), MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
     XPal = heap_caps_malloc(80*sizeof(uint16_t), MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
     ZBuf = heap_caps_malloc(320, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
     
 
-    msxFramebuffer = (uint8_t*)heap_caps_malloc(WIDTH*HEIGHT*sizeof(uint8_t), MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
-    memset(msxFramebuffer, 0, WIDTH*HEIGHT);
+    /* PreallocVideo() normally claimed this before the emulator took its
+     * RAM - see the note there. Falling back to allocating it here still
+     * works when there is room. Note the memset moved below the check:
+     * upstream cleared the buffer before testing it for NULL. */
+    if (!msxFramebuffer) msxFramebuffer = (uint8_t*)heap_caps_malloc(WIDTH*FB_BAND_LINES*sizeof(uint8_t), MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
     if (!msxFramebuffer){ printf("malloc msxFramebuffer failed!\n"); return 0; }
+    memset(msxFramebuffer, 0, WIDTH*FB_BAND_LINES);
     
-    cursor = (pixel*)heap_caps_malloc(CURSOR_MAX_WIDTH*CURSOR_MAX_HEIGHT*sizeof(pixel), MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
-    if (!cursor){ printf("malloc cursor failed!\n"); return 0; }
-    
-    cursorBackGround= (pixel*)heap_caps_malloc(CURSOR_MAX_WIDTH*CURSOR_MAX_HEIGHT*sizeof(pixel), MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
-    if (!cursorBackGround){ printf("malloc cursorBackGround failed!\n"); return 0; }
+    /* The cursor and cursor-background buffers belonged to the touch
+     * virtual keyboard, which was trimmed out of this port (there is a
+     * real keyboard instead). Nothing reads them any more, and 2kB is
+     * not nothing on this board. */
     
 #ifdef WITH_OVERLAY
      /* Menu overlay*/
@@ -310,15 +329,15 @@ int InitVideo(void) {
     display_write_frame_msx(0,0,WIDTH_OVERLAY,HEIGHT_OVERLAY, NULL, XPal[BGColor], XPal);
     
     
-    xTaskCreatePinnedToCore(&videoTask, "videoTask", 2048, NULL, 5, NULL, 1);
-    
-    
-    
-    
+
+    /* Upstream fell off the end of this function; InitMachine() checks the
+     * result, so say so explicitly. */
+    return 1;
 }
 void TrashVideo(void){
     
     free(msxFramebuffer);
+    msxFramebuffer = 0;
     free(overlay.Data);
 }
  
@@ -371,23 +390,14 @@ char scounter = 0;
 #endif
 
 void RefreshScreen(void) {
-   
-  
-    
-    for (register int y = lastLine+1; y < HEIGHT; y++) {
-        for (register int w = 0; w < WIDTH; w++) {
-            msxFramebuffer[w+(y*WIDTH)]= BGColor;
-        }
-    }
-   xQueueSend(videoQueue, (void*)&VideoTaskCommand, portMAX_DELAY);
+   FlushBand();
+   FillRows(lastLine+1, HEIGHT-(lastLine+1), BGColor);
   #ifdef VERBOSE_VIDEO
    scounter++;
     if (scounter == 10) {
-       // printf("%llu fps\n", 1000000 / ((esp_timer_get_time() - mtimer) / 10));
-        printf("%llu Screen %d\n", (esp_timer_get_time() - mtimer) / 10, ScrMode);
+        printf("%llu us/frame, Screen %d\n", (esp_timer_get_time() - mtimer) / 10, ScrMode);
         mtimer = esp_timer_get_time();
         scounter = 0;
-
     }
     #endif
 }
@@ -734,31 +744,49 @@ void Sprites(register byte Y,register uint8_t *Line)
 
 uint8_t *GetBuffer(register byte Y,register uint8_t C, register int M)
 {
-    
-    if(!Y){
-        register int H; 
+    if(!Y)
+    {
+        /* Top of a new frame. Finish whatever band is open, repaint the
+         * whole panel if the background colour changed, then lay down the
+         * top border directly. */
+        FlushBand();
         FirstLine=(ScanLines212? 8:18)+VAdjust;
-        for(H=WIDTH*FirstLine-1;H>=0;H--) msxFramebuffer[H]=C;
+
+        if (VideoTaskCommand == 1 || lastBGColor != XPal[BGColor]) {
+            display_write_frame_msx(0, 0, WIDTH_OVERLAY, HEIGHT_OVERLAY, NULL,
+                                    XPal[BGColor], CurrentPalette());
+            lastBGColor = XPal[BGColor];
+            VideoTaskCommand = 0;
+        }
+        FillRows(0, FirstLine, C);
     }
-     
-    /* Return 0 if we've run out of the screen buffer due to overscan */
-  if(Y+FirstLine>=HEIGHT){return(0);}
-  lastLine = Y+FirstLine;
-      
-  int16_t ln = lastLine;
-  if (ln < 0) ln = 0;
 
+    /* Run out of picture because of overscan */
+    if(Y+FirstLine>=HEIGHT){return(0);}
+    lastLine = Y+FirstLine;
 
-  /* Set up the transparent color */
-  XPal[0]=(!BGColor||SolidColor0)? XPal0:XPal[BGColor];
-  uint8_t* P = &msxFramebuffer[ln * WIDTH];
- 
-  /* Paint left/right borders */
-  for(register int H=(WIDTH-256)/2+HAdjust;H>0;H--) P[H-1]=C;
-  for(register int H=(WIDTH-256)/2-HAdjust;H>0;H--) P[WIDTH-H]=C;
-  
- 
-  return((&msxFramebuffer[ln * WIDTH])+(WIDTH-256)/2+HAdjust);
+    int ln = lastLine;
+    if (ln < 0) ln = 0;
+
+    /* Set up the transparent color */
+    XPal[0]=(!BGColor||SolidColor0)? XPal0:XPal[BGColor];
+
+    /* The band is pushed out when it fills up, or when the renderer skips
+     * a line and the rows stop being consecutive. It cannot be flushed at
+     * the moment it fills, because the caller is about to write into the
+     * row we are handing back - so the check happens on the way in. */
+    if (bandTop >= 0 && (bandFill >= FB_BAND_LINES || ln != bandTop + bandFill))
+        FlushBand();
+    if (bandTop < 0) { bandTop = ln; bandFill = 0; }
+
+    uint8_t* P = &msxFramebuffer[bandFill * WIDTH];
+    bandFill++;
+
+    /* Paint left/right borders */
+    for(register int H=(WIDTH-256)/2+HAdjust;H>0;H--) P[H-1]=C;
+    for(register int H=(WIDTH-256)/2-HAdjust;H>0;H--) P[WIDTH-H]=C;
+
+    return P+(WIDTH-256)/2+HAdjust;
 }
 
 /** RefreshLineTx80() ****************************************/

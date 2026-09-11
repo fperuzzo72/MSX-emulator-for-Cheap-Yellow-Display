@@ -415,6 +415,17 @@ pixel GetColor(unsigned char R,unsigned char G,unsigned char B);
 /*************************************************************/
 void SetPalette(pixel N,unsigned char R,unsigned char G,unsigned char B);
 
+/** InitAudio()/TrashAudio() *********************************/
+/** Bring the platform's audio output up and down. Upstream  **/
+/** declares these in each port's own header (LibUnix.h and  **/
+/** friends), which this vendored subset does not carry, so  **/
+/** they are declared here instead - Sound.c calls them and  **/
+/** GCC 14 treats an implicit declaration as an error.       **/
+/** Implemented for this board in src/audio_glue.c.          **/
+/*************************************************************/
+unsigned int InitAudio(unsigned int Rate,unsigned int Latency);
+void TrashAudio(void);
+
 /** GetFreeAudio() *******************************************/
 /** Get the amount of free samples in the audio buffer.     **/
 /*************************************************************/

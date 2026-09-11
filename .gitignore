@@ -1,0 +1,11 @@
+
+# Local-only ROM material. Dumped BIOS and game ROMs are the owner's own
+# property and are deliberately NOT published to GitHub. The generated
+# C array that embeds the BIOS in the firmware is derived from it, so it
+# is ignored too.
+hotbi13p/
+*.rom
+*.ic3c
+src/hotbit_bios_data.c
+.DS_Store
+.pio/

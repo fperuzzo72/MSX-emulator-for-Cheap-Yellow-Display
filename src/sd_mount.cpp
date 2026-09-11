@@ -8,6 +8,7 @@
  */
 #include <Arduino.h>
 #include "sd_mount.h"
+#include <sys/stat.h>   /* mkdir() - not pulled in by Arduino.h */
 #include "driver/sdspi_host.h"
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
@@ -47,7 +48,10 @@ int sd_mount_init(void) {
     ret = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &sCard);
     if (ret != ESP_OK) {
         Serial.printf("SD: mount failed (0x%x) - no card, or wiring issue. "
-                       "Falling back to embedded C-BIOS; game ROMs need a working card.\n", ret);
+                       "Running from the BIOS embedded in flash.\n", ret);
+        /* Hand the bus back: on a board with no spare RAM, the SD driver's
+         * buffers are worth reclaiming when there is no card to talk to. */
+        spi_bus_free((spi_host_device_t)host.slot);
         return 0;
     }
 
