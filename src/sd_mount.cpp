@@ -27,6 +27,16 @@ int sd_mount_init(void) {
     mount_config.allocation_unit_size = 16 * 1024;
 
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+
+    /* DO NOT take the default host here. On the ESP32, SDSPI_HOST_DEFAULT()
+     * hands back SPI2_HOST, which IS HSPI - the same bus TFT_eSPI drives
+     * (platformio.ini sets USE_HSPI_PORT). Mounting on it reassigns the
+     * pin matrix from the panel's pins to the card's, and the display goes
+     * dark the moment this function runs: backlight on, nothing drawn,
+     * with no error anywhere because the mount itself is perfectly happy.
+     * This board wires the card on VSPI (SCK18/MISO19/MOSI23/CS5, which
+     * are the VSPI defaults), and VSPI is SPI3_HOST. */
+    host.slot = SPI3_HOST;
     spi_bus_config_t bus_cfg = {};
     bus_cfg.mosi_io_num = SD_PIN_MOSI;
     bus_cfg.miso_io_num = SD_PIN_MISO;
@@ -35,7 +45,10 @@ int sd_mount_init(void) {
     bus_cfg.quadhd_io_num = -1;
     bus_cfg.max_transfer_sz = 4000;
 
-    esp_err_t ret = spi_bus_initialize((spi_host_device_t)host.slot, &bus_cfg, SDSPI_DEFAULT_DMA);
+    /* SPI_DMA_CH_AUTO rather than SDSPI_DEFAULT_DMA: on the ESP32 that
+     * macro expands to a host id, not a DMA channel, which only happens
+     * to work. */
+    esp_err_t ret = spi_bus_initialize((spi_host_device_t)host.slot, &bus_cfg, SPI_DMA_CH_AUTO);
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
         Serial.printf("SD: spi_bus_initialize failed (0x%x)\n", ret);
         return 0;

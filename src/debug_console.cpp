@@ -15,6 +15,9 @@
 #include "msx_keys.h"
 #include "ble_keyboard.h"
 
+extern "C" void display_test_pattern(int which);
+extern "C" void display_set_swap_bytes(int on);
+
 /* The handful of MSX international-charset codes worth naming when they
  * turn up in a screen dump; everything else prints as its hex code. */
 static const char *charName(uint8_t c) {
@@ -102,6 +105,21 @@ static void handleLine(char *line) {
             }
             break;
         }
+        case 'x': {
+            int which = 0;
+            sscanf(line + 1, "%d", &which);
+            display_test_pattern(which);
+            Serial.printf("test pattern %d drawn (0 black, 1 red, 2 green, 3 blue, "
+                          "4 white block via TFT_eSPI, 5 same block via the emulator's path)\n", which);
+            break;
+        }
+        case 'w': {
+            int on = 1;
+            sscanf(line + 1, "%d", &on);
+            display_set_swap_bytes(on);
+            Serial.printf("colour byte swap %s\n", on ? "on" : "off");
+            break;
+        }
         case 'h': {
             static unsigned int lastFrames = 0;
             static unsigned long lastMs = 0;
@@ -119,7 +137,7 @@ static void handleLine(char *line) {
         }
         case '?':
         default:
-            Serial.println("s=screen  t <text>=type (\\n = Return)  d <n> <shift> <char>=dead-key probe  g <code>=glyph  h=status");
+            Serial.println("s=screen  t <text>=type  d=dead-key probe  g <code>=glyph  x <n>=test pattern  w <0|1>=byte swap  h=status");
             break;
     }
 }
