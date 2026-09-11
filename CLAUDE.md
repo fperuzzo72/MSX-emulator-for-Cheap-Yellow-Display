@@ -13,9 +13,18 @@ resistive touch, microSD slot), with input from a BLE keyboard instead of
 the touchscreen. PlatformIO + Arduino framework. Not commissioned as a
 one-off script - it's meant to be built on incrementally.
 
-**Status (2026-09-11): running on hardware.** It boots a real Sharp/Epcom
-Hotbit HB-8000 BIOS into MSX-BASIC at 59-61 fps with sound, no SD card
-needed - the BIOS is embedded in the firmware. Verified by driving the
+**Status (2026-09-11): running on hardware, picture on the panel.** It
+boots a real Sharp/Epcom Hotbit HB-8000 BIOS into MSX-BASIC with sound,
+no SD card needed - the BIOS is embedded in the firmware. Speed is ~42 fps at 1:1 (about 70% of MSX speed). An earlier figure of 59-61 fps
+in this repo was wrong: it was measured while the SD mount had stolen the
+display's SPI bus, so nothing was actually being drawn. With the panel
+really driven, the blit costs what it costs, and because fMSX paces the
+Z80 against the frame, that slows the whole machine and not just the
+picture. At the 1.5x scale it is ~25-33 fps. Getting this back is the
+obvious next piece of work; a first attempt at overlapping the blit with
+DMA (TFT_eSPI pushPixelsDMA with two line buffers) put a flashing white
+screen up and was reverted, so it needs doing properly rather than
+quickly. Verified by driving the
 machine over the serial console and reading its screen back out of the
 emulated VDP; see "Checking it without a keyboard in the room" in
 docs/KEYBOARD.md. The one thing not yet verified on hardware is an actual

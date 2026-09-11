@@ -13,17 +13,30 @@ Bluetooth Low Energy keyboard instead of the touchscreen.
 > "Licensing" below and `LICENSE`'s "NOTE ON SCOPE" section before you do
 > anything beyond building this for yourself.
 
-**Status: running on real hardware.** It boots a Sharp/Epcom Hotbit
-HB-8000 BIOS into MSX-BASIC at 59-61 fps, with sound, with no SD card in
-the slot - the BIOS is embedded in the firmware. A BASIC program typed in
+**Status: running on real hardware, picture on the panel.** It boots a
+Sharp/Epcom Hotbit HB-8000 BIOS into MSX-BASIC, with sound, with no SD
+card in the slot - the BIOS is embedded in the firmware. Speed is ~42 fps at 1:1 (about 70% of MSX speed). An earlier figure of 59-61 fps
+in this repo was wrong: it was measured while the SD mount had stolen the
+display's SPI bus, so nothing was actually being drawn. With the panel
+really driven, the blit costs what it costs, and because fMSX paces the
+Z80 against the frame, that slows the whole machine and not just the
+picture. At the 1.5x scale it is ~25-33 fps. Getting this back is the
+obvious next piece of work; a first attempt at overlapping the blit with
+DMA (TFT_eSPI pushPixelsDMA with two line buffers) put a flashing white
+screen up and was reverted, so it needs doing properly rather than
+quickly. A BASIC program typed in
 through the US-International keyboard layer, accents and all, runs
 correctly.
 
-Everything above was verified over the USB cable rather than by looking at
-the panel: the firmware carries a small serial console that types into the
+Most of that was verified over the USB cable rather than by looking at the
+panel: the firmware carries a small serial console that types into the
 emulated machine and reads its screen back out of the emulated VDP. See
-docs/KEYBOARD.md. The one thing still unverified is pairing an actual BLE
-keyboard, because there wasn't one in the room.
+docs/KEYBOARD.md. That is a good instrument and it is also how three
+display bugs went unnoticed for a while - a machine can be perfectly alive
+in its own VRAM with nothing reaching the glass. Check the panel too.
+
+The one thing still unverified is pairing an actual BLE keyboard, because
+there wasn't one in the room.
 
 Two documents are worth reading before changing anything:
 

@@ -46,9 +46,11 @@ so nothing is lost. **32kB saved.**
 whole 256x216 8bpp frame (55kB) and handed it to a second task to blit.
 This build renders 24 lines at a time and pushes each band to the panel as
 soon as it is complete. Blitting moved onto the emulation task, which is
-the cost; the measured frame rate is still **59-61 fps**, full MSX speed.
-**49kB saved**, and it is the single change that made 64kB of emulated RAM
-possible at all.
+the cost: the measured frame rate is **~42 fps at 1:1**, about 70% of MSX
+speed, and ~25-33 fps at the 1.5x scale. (A 59-61 fps figure recorded
+earlier was measured while the display's SPI bus was broken and nothing
+was being drawn - see docs/DISPLAY.md.) **49kB saved**, and it is the
+single change that made 64kB of emulated RAM possible at all.
 
 **3. EmptyRAM is a static array.** It is a fixed 16kB block that never
 changes size. As a heap allocation it landed *inside* the 110kB region
