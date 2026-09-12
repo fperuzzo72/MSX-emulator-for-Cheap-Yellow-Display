@@ -78,6 +78,13 @@ extern "C" int display_get_scale(void) {
     return sPendingScale ? sPendingScale : sScale;
 }
 
+/* How much of each frame goes into pushing pixels, as opposed to
+ * emulating. Without this, "can it go faster" is an opinion; with it, it
+ * is a number. */
+static volatile uint32_t sBlitUs = 0;
+extern "C" unsigned long display_blit_us(void) { return sBlitUs; }
+extern "C" void display_blit_us_reset(void) { sBlitUs = 0; }
+
 extern "C" void display_service(void) {
     if (sPendingScale) {
         sScale = sPendingScale;
@@ -178,6 +185,8 @@ extern "C" void display_write_frame_msx(short srcX, short srcY, short width, sho
     if (last > HEIGHT_OVERLAY) last = HEIGHT_OVERLAY;
     if (last <= first) return;
 
+    const uint32_t t0 = micros();
+
     tft.startWrite();
     tft.setAddrWindow(destX0(), first, dw, last - first);
 
@@ -203,6 +212,7 @@ extern "C" void display_write_frame_msx(short srcX, short srcY, short width, sho
     }
 
     tft.endWrite();
+    sBlitUs += micros() - t0;
 }
 
 extern "C" void display_request_test_pattern(int which) { sPendingPattern = which; }

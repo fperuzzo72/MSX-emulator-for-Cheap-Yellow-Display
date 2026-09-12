@@ -21,6 +21,8 @@ extern "C" void display_set_swap_bytes(int on);
 extern "C" void display_set_scale(int scale);
 extern "C" void audio_test_tone(int hz, int ms);
 extern "C" unsigned long audio_samples_written(void);
+extern "C" unsigned long display_blit_us(void);
+extern "C" void display_blit_us_reset(void);
 extern "C" int  display_get_scale(void);
 
 /* The handful of MSX international-charset codes worth naming when they
@@ -200,12 +202,14 @@ static void handleLine(char *line) {
             break;
         }
         case 'h': {
-            static unsigned int lastFrames = 0;
+            static unsigned int lastFrames = 0, lastFrames0 = 0;
             static unsigned long lastMs = 0;
             unsigned int frames = msx_frame_count();
             unsigned long now = millis();
             float fps = (lastMs && now > lastMs)
                         ? (frames - lastFrames) * 1000.0f / (now - lastMs) : 0.0f;
+            unsigned long blitUs = display_blit_us();
+            display_blit_us_reset();
             lastFrames = frames; lastMs = now;
             Serial.printf("free heap %u, keyboard %s, %.1f fps since last 'h', "
                           "typing %d, pending accent '%s'\n",
@@ -215,6 +219,14 @@ static void handleLine(char *line) {
             Serial.printf("HID reports received: %lu, audio samples sent: %lu\n",
                           ble_keyboard_report_count(), audio_samples_written());
             Serial.printf("full-panel repaints: %lu\n", msx_full_repaints());
+            if (fps > 0.0f && frames > lastFrames0) {
+                float perFrameUs = (float)blitUs / (float)(frames - lastFrames0);
+                Serial.printf("blit %.1f ms/frame, %.0f%% of a %.1f ms frame\n",
+                              perFrameUs / 1000.0f,
+                              100.0f * perFrameUs / (1000000.0f / fps),
+                              1000.0f / fps);
+            }
+            lastFrames0 = frames;
             break;
         }
         case '?':
