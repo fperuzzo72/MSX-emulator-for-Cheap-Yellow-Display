@@ -166,10 +166,11 @@ static void handleLine(char *line) {
             break;
         }
         case 'p': {
-            int row = 0, bit = 0, shift = 0;
-            if (sscanf(line + 1, "%i %i %i", &row, &bit, &shift) >= 2) {
-                msx_keys_press_matrix(row, bit, shift);
-                Serial.printf("pressed row %d bit 0x%02X shift %d\n", row, bit, shift);
+            int row = 0, bit = 0, mods = 0;
+            if (sscanf(line + 1, "%i %i %i", &row, &bit, &mods) >= 2) {
+                msx_keys_press_matrix(row, bit, mods);
+                Serial.printf("pressed row %d bit 0x%02X mods %d (1=Shift 2=Ctrl)\n",
+                              row, bit, mods);
             }
             break;
         }
@@ -218,7 +219,7 @@ static void handleLine(char *line) {
         }
         case '?':
         default:
-            Serial.println("s=screen  t <text>=type  d=dead-key probe  g <code>=glyph  b <0|1>=BLE scan on/off  n <0|1>=sound on/off  a [hz] [ms]=test tone  r <addr> [len]=peek MSX memory  m <0|1>=unmount/mount the card  p <row> <bit> <shift>=press a matrix key  k [0|1]=dump HID reports  z [1|2]=picture scale  x <n>=test pattern  w <0|1>=byte swap  h=status");
+            Serial.println("s=screen  t <text>=type  d=dead-key probe  g <code>=glyph  b <0|1>=BLE scan on/off  n <0|1>=sound on/off  a [hz] [ms]=test tone  r <addr> [len]=peek MSX memory  m <0|1>=unmount/mount the card  p <row> <bit> <mods>=press a matrix key  k [0|1]=dump HID reports  z [1|2]=picture scale  x <n>=test pattern  w <0|1>=byte swap  h=status");
             break;
     }
 }

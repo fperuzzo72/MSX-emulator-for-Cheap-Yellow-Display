@@ -88,7 +88,7 @@ enum { ACC_NONE = 0, ACC_ACUTE, ACC_GRAVE, ACC_TILDE, ACC_CIRCUMFLEX, ACC_DIAERE
 
 struct DeadKey {
     unsigned char idx;     /* matrix position of the dead key            */
-    unsigned char shift;   /* whether it needs Shift                     */
+    unsigned char shift;   /* modifier mask: bit 0 Shift, bit 1 Ctrl     */
     unsigned char literal; /* the accent as a character in its own right.
                             * Typed through the keyboard buffer, not the
                             * matrix, because this keyboard has no key at
@@ -320,7 +320,7 @@ void msx_keys_init(void) {
 #define GAP_FRAMES  2
 #define QUEUE_LEN   8
 
-struct Emission { unsigned char row, bit, shift; };
+struct Emission { unsigned char row, bit, shift; }; /* shift: bit0 Shift, bit1 Ctrl */
 
 static struct Emission sQueue[QUEUE_LEN];
 static unsigned char sQHead, sQTail;
@@ -452,9 +452,9 @@ static int typingFillReport(unsigned char *report, int frozen) {
     return 1;
 }
 
-void msx_keys_press_matrix(int row, int bit, int shift) {
+void msx_keys_press_matrix(int row, int bit, int mods) {
     if (row < 0 || row > 15 || bit <= 0 || bit > 0xFF) return;
-    queuePush((unsigned char)row, (unsigned char)bit, (unsigned char)(shift ? 1 : 0));
+    queuePush((unsigned char)row, (unsigned char)bit, (unsigned char)(mods & 3));
 }
 
 void msx_keys_probe_dead(int which, int shift, char base) {
@@ -547,7 +547,8 @@ static int queueFrame(unsigned char *state) {
     if (sQHolding && !queueEmpty()) {
         const struct Emission *e = &sQueue[sQHead];
         state[e->row] &= (unsigned char)~e->bit;
-        if (e->shift) state[M_ROW(K_SHIFT)] &= (unsigned char)~M_BIT(K_SHIFT);
+        if (e->shift & 1) state[M_ROW(K_SHIFT)] &= (unsigned char)~M_BIT(K_SHIFT);
+        if (e->shift & 2) state[M_ROW(K_CTRL)]  &= (unsigned char)~M_BIT(K_CTRL);
     }
     return 1;
 }

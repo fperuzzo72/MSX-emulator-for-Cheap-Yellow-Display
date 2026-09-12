@@ -41,8 +41,9 @@ int  msx_keys_typing(void); /* 1 while a queued string is still going in */
 void msx_keys_probe_dead(int which, int shift, char base);
 
 /* Press one arbitrary matrix position, for mapping out what the BIOS
- * decodes. `row` 0-10, `bit` a single set bit. */
-void msx_keys_press_matrix(int row, int bit, int shift);
+ * decodes. `row` 0-10, `bit` a single set bit, `mods` bit 0 Shift and
+ * bit 1 Ctrl (so 2 is Ctrl alone, which is what Ctrl+STOP needs). */
+void msx_keys_press_matrix(int row, int bit, int mods);
 
 /* Names the accent currently pending from a dead key, for the serial
  * console's status line. Returns "" when nothing is pending. */
