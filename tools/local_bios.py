@@ -44,3 +44,10 @@ if os.path.isfile(snaps_c):
     print("Spectrum snapshots: %s found, embedding them" % os.path.relpath(snaps_c))
 else:
     print("Spectrum snapshots: none")
+
+tapes_c = os.path.join(env.subst("$PROJECT_SRC_DIR"), "spectrum", "spectrum_tape_data.c")
+if os.path.isfile(tapes_c):
+    env.Append(CPPDEFINES=["HAVE_SPECTRUM_TAPES"])
+    print("Spectrum tapes: %s found, embedding them" % os.path.relpath(tapes_c))
+else:
+    print("Spectrum tapes: none")

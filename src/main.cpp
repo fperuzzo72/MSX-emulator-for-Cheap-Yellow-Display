@@ -43,6 +43,8 @@ void setup() {
     Serial.begin(115200);
     delay(300);
 
+    machine_storage_init();
+
     /* Whatever this board was last told to be. With one machine built in
      * there is nothing to choose; with both, the boot menu can still
      * change it below. */

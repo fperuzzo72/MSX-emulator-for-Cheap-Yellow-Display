@@ -160,8 +160,12 @@ uint8_t spectrum_keys_read(uint8_t highAddr) {
 /* code being wrong. Typing here is key-level.                           */
 /* ---------------------------------------------------------------- */
 #define TYPE_LEN  64
-#define TYPE_HOLD 4
-#define TYPE_GAP  3
+/* The ROM debounces, and it also suppresses the same key pressed again
+ * too soon after it was released - which is exactly the case in LOAD "",
+ * where Symbol Shift and P are pressed twice running. The second quote
+ * went missing at four frames down and three up; at these it does not. */
+#define TYPE_HOLD 6
+#define TYPE_GAP  10
 
 static uint8_t sTypeHid[TYPE_LEN], sTypeMods[TYPE_LEN];
 static uint8_t sTHead, sTTail, sTPhase, sTDown;
@@ -206,6 +210,25 @@ int spectrum_keys_type(const char *text) {
 }
 
 int spectrum_keys_typing(void) { return sTHead != sTTail || sTDown; }
+
+/* LOAD "" and Enter. On a Spectrum LOAD is the J key, and a quote is
+ * Symbol Shift with P, which is Ctrl here. Queued as raw keystrokes
+ * because none of those are characters this keyboard layer maps. */
+void spectrum_keys_autoload(void) {
+    /* Enter first, to get past the copyright screen this ROM waits on,
+     * then LOAD "" and Enter. LOAD is the J key and a quote is Symbol
+     * Shift with P, which is Ctrl here. */
+    static const uint8_t hid[]  = { 0x28, 0x0D, 0x13, 0x13, 0x28 };
+    static const uint8_t mods[] = { 0x00, 0x00, 0x01, 0x01, 0x00 };
+    unsigned i;
+    for (i = 0; i < sizeof(hid); i++) {
+        uint8_t next = (uint8_t)((sTTail + 1) % TYPE_LEN);
+        if (next == sTHead) return;
+        sTypeHid[sTTail]  = hid[i];
+        sTypeMods[sTTail] = mods[i];
+        sTTail = next;
+    }
+}
 
 /* Called once a frame, before the CPU runs. */
 void spectrum_keys_frame(void) {

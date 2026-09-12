@@ -43,6 +43,7 @@ static volatile int sReady;
 static volatile unsigned long sFrames;
 static int sSoundOn = 1;
 static int64_t sNextFrameUs;
+static unsigned long sAutoloadAt;
 
 /* One band of the picture, the same trick the MSX side uses: a whole
  * 256x192 8bpp frame would be 48kB and this board has no PSRAM. */
@@ -104,11 +105,17 @@ static void buildPalette(void) {
 /* Memory and ports                                                   */
 /* ---------------------------------------------------------------- */
 byte RdZ80(word A) {
+    if (A < SPEC_ROM_SIZE) {
 #ifdef HAVE_SPECTRUM_ROM
-    if (A < SPEC_ROM_SIZE) return spectrum_rom[A];
+        /* Normally straight out of flash. With a tape loaded it is a
+         * patched copy in RAM, because the trap is an opcode planted in
+         * the ROM and flash cannot be written. */
+        const uint8_t *ram = spectrum_tape_rom();
+        return ram ? ram[A] : spectrum_rom[A];
 #else
-    if (A < SPEC_ROM_SIZE) return 0xFF;
+        return 0xFF;
 #endif
+    }
     return sRAM[A - SPEC_ROM_SIZE];
 }
 
@@ -132,7 +139,6 @@ void OutZ80(word Port, byte V) {
     }
 }
 
-void PatchZ80(Z80 *R) { (void)R; }
 
 /* ---------------------------------------------------------------- */
 /* Video                                                              */
@@ -229,6 +235,11 @@ static void runFrame(void) {
         flashCounter = 0;
         flashPhase = !flashPhase;
         markAll();
+    }
+
+    if (sAutoloadAt && sFrames >= sAutoloadAt) {
+        sAutoloadAt = 0;
+        spectrum_keys_autoload();
     }
 
     spectrum_keys_frame();
@@ -342,8 +353,14 @@ static void m_run(void) {
 
     markAll();
 
-    if (loadSnapshot())
+    if (loadSnapshot()) {
         printf("spectrum: started from a snapshot\n");
+    } else if (spectrum_tape_begin(spectrum_rom)) {
+        /* Not yet: the ROM has its own startup to get through, and this
+         * one sits on a copyright screen until a key is pressed. Typing
+         * into it before the cursor exists just loses the keystrokes. */
+        sAutoloadAt = 150;      /* three seconds of emulated time */
+    }
 
     sReady = 1;
     for (;;) runFrame();
@@ -415,18 +432,44 @@ static int m_peek(int addr) {
 static void m_set_sound(int on) { sSoundOn = on ? 1 : 0; }
 static int  m_sound_on(void)    { return sSoundOn; }
 
-static const char *m_debug_help(void) { return ""; }
-static int m_debug_command(const char *line) { (void)line; return 0; }
-
-/* Entry 0 is the machine on its own; the rest are snapshots in flash. */
-static int m_entry_count(void) { return 1 + spectrum_snapshot_count(); }
-
-static const char *m_entry_name(int i) {
-    return i <= 0 ? "Spectrum BASIC" : spectrum_snapshot_name(i - 1);
+static const char *m_debug_help(void) {
+    return "  y                      tape status: blocks served, where the CPU is";
+}
+static int m_debug_command(const char *line) {
+    if (line[0] == 'y') {
+        printf("tape: %d block(s) handed over, ROM %s, PC %04X SP %04X\n",
+               spectrum_tape_blocks(),
+               spectrum_tape_rom() ? "patched in RAM" : "from flash",
+               sCPU.PC.W, sCPU.SP.W);
+        return 1;
+    }
+    return 0;
 }
 
-static void m_select_entry(int i)  { spectrum_snapshot_select(i <= 0 ? -1 : i - 1); }
-static int  m_selected_entry(void) { return spectrum_snapshot_selected() + 1; }
+/* Entry 0 is the machine on its own, then the snapshots, then the tapes. */
+static int m_entry_count(void) {
+    return 1 + spectrum_snapshot_count() + spectrum_tape_count();
+}
+
+static const char *m_entry_name(int i) {
+    int snaps = spectrum_snapshot_count();
+    if (i <= 0) return "Spectrum BASIC";
+    if (i <= snaps) return spectrum_snapshot_name(i - 1);
+    return spectrum_tape_name(i - 1 - snaps);
+}
+
+static void m_select_entry(int i) {
+    int snaps = spectrum_snapshot_count();
+    spectrum_snapshot_select((i > 0 && i <= snaps) ? i - 1 : -1);
+    spectrum_tape_select(i > snaps ? i - 1 - snaps : -1);
+}
+
+static int m_selected_entry(void) {
+    int snaps = spectrum_snapshot_count();
+    if (spectrum_snapshot_selected() >= 0) return spectrum_snapshot_selected() + 1;
+    if (spectrum_tape_selected() >= 0) return snaps + 1 + spectrum_tape_selected();
+    return 0;
+}
 
 const Machine spectrum_machine = {
     "ZX Spectrum 48K",

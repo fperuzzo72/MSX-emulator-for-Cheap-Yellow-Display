@@ -1,0 +1,16 @@
+# Custom partition table for a 4MB board.
+#
+# The stock huge_app.csv leaves 917kB in a SPIFFS partition and 64kB for
+# core dumps, and this project uses neither: the ROMs it carries are
+# compiled into the application image, and crash backtraces are read off
+# the serial port. Handing that space to the application instead takes it
+# from 3MB to 3.9MB, which is the difference between carrying a handful of
+# games and carrying a shelf of them.
+#
+# No OTA slot, for the same reason the stock file this replaces had none:
+# two half-sized application slots would not fit a machine plus its ROMs.
+#
+# Name,     Type, SubType, Offset,  Size,
+nvs,        data, nvs,     0x9000,  0x5000,
+otadata,    data, ota,     0xe000,  0x2000,
+app0,       app,  ota_0,   0x10000, 0x3F0000,

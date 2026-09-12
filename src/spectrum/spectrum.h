@@ -41,6 +41,18 @@ extern "C" {
 #define SNA_HEADER   27
 #define SNA_SIZE     (SNA_HEADER + 49152)
 
+/* Tapes built into this firmware. A .tap is loaded by trapping the ROM's
+ * own LD-BYTES routine rather than by emulating an audio signal; see
+ * spectrum_tape.c. */
+int         spectrum_tape_count(void);
+const char *spectrum_tape_name(int i);
+int         spectrum_tape_selected(void);
+void        spectrum_tape_select(int i);
+int         spectrum_tape_begin(const unsigned char *rom);
+const uint8_t *spectrum_tape_rom(void);
+int         spectrum_tape_blocks(void);
+void        spectrum_keys_autoload(void);
+
 /* Snapshots built into this firmware, the Spectrum's answer to the MSX's
  * cartridges. Nothing here is distributed with the project. */
 int         spectrum_snapshot_count(void);

@@ -8,6 +8,7 @@
 #include "machine.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include <stdio.h>
 
 #ifdef HAVE_MACHINE_MSX
 extern const Machine msx_machine;
@@ -30,6 +31,21 @@ const int machine_count = (int)(sizeof(machine_list) / sizeof(machine_list[0]));
 /* Set during boot, before anything else touches it. */
 const Machine *machine = 0;
 
+/* NVS has to be up before anything reads a choice out of it.
+ *
+ * The Arduino core brings it up on its way to Bluetooth, which is much
+ * later than setup() runs - so the first read returned the default, the
+ * boot menu then wrote that default back over the real choice, and
+ * selecting anything from the serial console appeared not to stick. */
+void machine_storage_init(void) {
+    esp_err_t e = nvs_flash_init();
+    if (e == ESP_ERR_NVS_NO_FREE_PAGES || e == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase();
+        e = nvs_flash_init();
+    }
+    if (e != ESP_OK) printf("machine: NVS unavailable (%d), choices will not stick\n", (int)e);
+}
+
 #define NVS_NAMESPACE "cyd"
 #define NVS_KEY       "machine"
 
@@ -46,12 +62,16 @@ int machine_chosen_index(void) {
 
 void machine_choose(int index, int entry) {
     nvs_handle_t h;
+    esp_err_t e;
     if (index < 0 || index >= machine_count) index = 0;
     machine = machine_list[index];
     if (entry >= 0) machine->select_entry(entry);
-    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_set_i32(h, NVS_KEY, (int32_t)index);
-        nvs_commit(h);
-        nvs_close(h);
-    }
+    e = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    if (e != ESP_OK) { printf("machine: nvs_open failed (%d)\n", (int)e); return; }
+    e = nvs_set_i32(h, NVS_KEY, (int32_t)index);
+    if (e != ESP_OK) printf("machine: nvs_set failed (%d)\n", (int)e);
+    e = nvs_commit(h);
+    if (e != ESP_OK) printf("machine: nvs_commit failed (%d)\n", (int)e);
+    nvs_close(h);
+
 }

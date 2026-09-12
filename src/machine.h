@@ -68,6 +68,10 @@ extern const Machine *const machine_list[];
 extern const int machine_count;
 extern const Machine *machine;
 
+/* Bring the choice storage up. Must be called before anything reads a
+ * remembered choice. */
+void machine_storage_init(void);
+
 /* Pick one, by index into machine_list. Remembered in NVS. */
 void machine_choose(int index, int entry);
 int  machine_chosen_index(void);
