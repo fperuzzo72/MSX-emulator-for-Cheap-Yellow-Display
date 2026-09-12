@@ -14,6 +14,7 @@
  */
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include <Preferences.h>
 #include <cstring>
 #include "ble_keyboard.h"
 #include "msx_keys.h"
@@ -26,6 +27,41 @@ static const char HID_REPORT_DATA_UUID[]    = "2a4d"; /* generic Report (fallbac
 static NimBLEAddress sTarget;
 static volatile bool sHaveTarget = false;
 static volatile bool sConnected  = false;
+
+/* The keyboard we last talked to, remembered across reboots.
+ *
+ * A keyboard that has already been paired does not necessarily put the
+ * HID service UUID in its advertisements when it comes back: a bonded
+ * device often sends a short advertisement carrying little more than its
+ * address. Matching only on "advertises service 0x1812" therefore ignores
+ * exactly the device we want, which is why it only ever connected after
+ * being put into pairing mode again. This has nothing to do with an SD
+ * card - the bond itself lives in NVS, in flash. */
+static Preferences sPrefs;
+static NimBLEAddress sKnown;
+static bool sHaveKnown = false;
+
+static void rememberKeyboard(const NimBLEAddress &addr) {
+    std::string str = addr.toString();
+    sPrefs.begin("msxkbd", false);
+    sPrefs.putString("addr", str.c_str());
+    sPrefs.putUChar("type", addr.getType());
+    sPrefs.end();
+    sKnown = addr;
+    sHaveKnown = true;
+}
+
+static void loadKnownKeyboard() {
+    if (!sPrefs.begin("msxkbd", true)) return; /* nothing stored yet */
+    String str = sPrefs.getString("addr", "");
+    uint8_t type = sPrefs.getUChar("type", 0);
+    sPrefs.end();
+    if (str.length() >= 17) {
+        sKnown = NimBLEAddress(std::string(str.c_str()), type);
+        sHaveKnown = true;
+        Serial.printf("BLE: will also answer to the keyboard it saw last, %s\n", str.c_str());
+    }
+}
 
 /* Latest 8-byte boot keyboard report: [modifiers, reserved, key1..key6].
  * Written by the NimBLE host task, read by the emulation task, so it is
@@ -70,7 +106,27 @@ static void notifyCB(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len,
 
 class KbdScanCallbacks : public NimBLEScanCallbacks {
     void onResult(const NimBLEAdvertisedDevice *dev) override {
-        if (!dev->haveServiceUUID() || !dev->isAdvertisingService(NimBLEUUID(HID_SERVICE_UUID))) {
+        /* The keyboard we bonded with last time gets in on its address
+         * alone, whatever it chooses to advertise. */
+        if (sHaveKnown && dev->getAddress() == sKnown) {
+            Serial.printf("BLE: the keyboard from last time is back (%s), connecting\n",
+                          dev->getAddress().toString().c_str());
+            sTarget = dev->getAddress();
+            sHaveTarget = true;
+            NimBLEDevice::getScan()->stop();
+            return;
+        }
+        /* Accept on EITHER the advertised HID service or an appearance
+         * that says keyboard. A device that has already been bonded often
+         * advertises neither its services nor a stable address when it
+         * comes back - it uses a resolvable private address that changes
+         * every time - so insisting on the service UUID is what made it
+         * connect only while in pairing mode. */
+        const uint16_t appearance = dev->getAppearance();
+        const bool saysHid = dev->haveServiceUUID() &&
+                             dev->isAdvertisingService(NimBLEUUID(HID_SERVICE_UUID));
+        const bool saysKeyboard = (appearance == 0x3C1);
+        if (!saysHid && !saysKeyboard) {
             /* Say what was seen and passed over. Pairing has never been
              * tried on this board, so the first attempt should not have
              * to guess why nothing happened - a keyboard that is
@@ -81,10 +137,8 @@ class KbdScanCallbacks : public NimBLEScanCallbacks {
                 Serial.printf("BLE: %u advertisements seen, none advertising HID yet\n", seen);
             return;
         }
-        /* Prefer something that says it is a keyboard, but accept a
-         * generic HID or an unset appearance too - plenty of keyboards
-         * never fill that field in. */
-        uint16_t appearance = dev->getAppearance();
+        /* A HID service that is explicitly something other than a
+         * keyboard (a mouse, say) is not ours. */
         if (appearance != 0x3C1 && appearance != 0x3C0 && appearance != 0) return;
 
         Serial.printf("BLE: HID device %s (appearance 0x%04X), connecting\n",
@@ -186,6 +240,7 @@ static bool connectToKeyboard() {
     }
 
     sConnected = true;
+    rememberKeyboard(sTarget);
     Serial.printf("BLE: keyboard connected, free heap %u\n", (unsigned)ESP.getFreeHeap());
     return true;
 }
@@ -194,6 +249,8 @@ void ble_keyboard_init() {
     NimBLEDevice::init("FNK0103-MSX");
     NimBLEDevice::setSecurityAuth(true, false, true); /* bond, no MITM, secure connections */
     NimBLEDevice::setPower(9);
+
+    loadKnownKeyboard();
 
     NimBLEScan *scan = NimBLEDevice::getScan();
     scan->setScanCallbacks(new KbdScanCallbacks(), false);

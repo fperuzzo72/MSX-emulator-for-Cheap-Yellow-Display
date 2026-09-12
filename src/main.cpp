@@ -3,14 +3,13 @@
  * Boot sequence:
  *   1. Display up first, so there is something on the panel even if a
  *      later step goes wrong.
- *   2. Try the SD card. Everything works without one: the BIOS is
- *      embedded in flash, and a missing card just means no cartridge
- *      images, which on a real BIOS lands you in MSX-BASIC.
- *   3. Start the BLE keyboard host. It connects in the background; the
- *      emulator does not wait for it.
- *   4. Hand off to the fMSX core on its own task with a generous stack -
- *      StartMSX() never returns, and Arduino's 8KB loop task is far too
- *      tight for the Z80 core plus the VDP renderer.
+ *   2. Hand off to the fMSX core on its own task. StartMSX() never
+ *      returns, and Arduino's 8KB loop task is far too tight for the Z80
+ *      core plus the VDP renderer.
+ *   3. Once the machine has claimed its memory, start the BLE keyboard
+ *      host. It connects in the background; nothing waits for it.
+ *
+ * The SD card is deliberately not part of this - see the note below.
  *
  * The serial console (debug_console.cpp) runs alongside all of this and
  * can read back what the emulated machine is showing, which is how this
@@ -52,10 +51,20 @@ void setup() {
     if (!msx_video_prealloc())
         Serial.println("video: framebuffer allocation FAILED");
 
-    /* Optional: with no card the embedded BIOS still boots MSX-BASIC. */
-    if (!sd_mount_init()) {
-        Serial.println("SD: running without a card (BIOS is embedded in flash)");
-    }
+    /* The card is NOT mounted at boot, on purpose.
+     *
+     * Nothing needs it: the BIOS lives in flash. Mounting it costs about
+     * 45kB in FAT driver and caches, which on this board is the
+     * difference between the BLE stack having room to accept a connection
+     * and not - with a card in the slot the emulated VRAM stopped fitting
+     * at all, by twelve bytes. So it stays unmounted until something
+     * actually wants it, which today means the `m` command on the serial
+     * console and, when they arrive, loading a ROM or mounting a disk for
+     * MSX-DOS. Those features will mount it themselves and can decide
+     * what to give up in exchange.
+     *
+     * The card itself is fine and mounts cleanly; this is a memory
+     * decision, not a card problem. See docs/MEMORY.md. */
 
     debug_console_init();
 
@@ -73,6 +82,7 @@ void setup() {
     for (int i = 0; i < 200 && !msx_memory_claimed(); i++) delay(25);
     Serial.printf("boot: emulator has its memory, free %u, largest block %u\n",
                   msx_free_heap(), msx_largest_block());
+
     ble_keyboard_init();
 }
 

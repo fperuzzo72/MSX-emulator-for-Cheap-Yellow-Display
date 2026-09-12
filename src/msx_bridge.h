@@ -45,6 +45,29 @@ int msx_screen_mode(void);
  * current screen mode is not a text mode). */
 int msx_screen_row(int row, uint8_t *out, int max);
 
+/* Put a character straight into the BIOS's keyboard buffer, as if the
+ * machine had decoded a keypress into it. Returns 0 if the buffer is
+ * full.
+ *
+ * This exists for accented characters. The Hotbit has no key for á, and
+ * its BIOS only produces one by composing a dead key with a letter - a
+ * composition whose case follows CAPS, and which ignores Shift entirely.
+ * Driving that from outside means the accent layer cannot decide the case
+ * of what it types, which is why Shift did nothing for accented letters.
+ * Composing in our own code and handing the finished character over gives
+ * back that control. Plain keys still go through the matrix, where games
+ * expect to find them. */
+int msx_type_char(unsigned char code);
+
+/* Read a byte of the emulated machine's memory, for checking that the
+ * system-variable addresses this firmware pokes at are really where the
+ * documentation says they are. Returns -1 if that page is not RAM. */
+int msx_peek(int addr);
+
+/* The machine's CAPS LOCK state, which is what decides the case of a
+ * letter when nothing is holding Shift. */
+int msx_caps_on(void);
+
 /* Copy the 8x8 bitmap the machine uses for character `code` out of the
  * VDP pattern table. The serial console draws it as text, which is the
  * only way to find out what an accented character code actually looks

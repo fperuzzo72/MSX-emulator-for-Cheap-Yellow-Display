@@ -3080,11 +3080,17 @@ int FindState(const char *Name)
 /*************************************************************/
 int LoadCart(const char *FileName,int Slot,int Type)
 { 
-  printf("Filename : %s\n", FileName);
   int C1,C2,Len,Pages,ROM64,BASIC;
   byte *P,PS,SS;
   char *T;
   FILE *F;
+
+  /* This was an unguarded printf of FileName in the port this core came
+   * from. It is called with a NULL name for empty cartridge slots, so it
+   * crashed in strlen() the moment an SD card was present and this code
+   * path ran for the first time. Guarded, and behind Verbose where the
+   * rest of the core's chatter lives. */
+  if(Verbose) printf("LoadCart: %s\n",FileName? FileName:"(empty slot)");
 
   /* Slot number must be valid */
   if((Slot<0)||(Slot>=MAXSLOTS)) return(0);

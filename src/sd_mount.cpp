@@ -19,12 +19,19 @@
 #define SD_PIN_CS    5
 
 static sdmmc_card_t *sCard = nullptr;
+static spi_host_device_t sHost = SPI3_HOST;
 
 int sd_mount_init(void) {
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {};
     mount_config.format_if_mount_failed = false;
-    mount_config.max_files = 5;
-    mount_config.allocation_unit_size = 16 * 1024;
+    /* Two open files, not five. FATFS keeps a sector-sized cache per open
+     * file, and at the 4kB sector size this build uses that is about 4.6kB
+     * each: five of them cost ~23kB, which is more than the emulated VRAM.
+     * The first time a card was ever inserted, the machine stopped booting
+     * because 16kB of VRAM no longer fitted - by twelve bytes. The core
+     * reads one ROM at a time; two is headroom. */
+    mount_config.max_files = 2;
+    mount_config.allocation_unit_size = 0; /* only used when formatting */
 
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 
@@ -37,6 +44,7 @@ int sd_mount_init(void) {
      * This board wires the card on VSPI (SCK18/MISO19/MOSI23/CS5, which
      * are the VSPI defaults), and VSPI is SPI3_HOST. */
     host.slot = SPI3_HOST;
+    sHost = (spi_host_device_t)host.slot;
     spi_bus_config_t bus_cfg = {};
     bus_cfg.mosi_io_num = SD_PIN_MOSI;
     bus_cfg.miso_io_num = SD_PIN_MISO;
@@ -74,4 +82,12 @@ int sd_mount_init(void) {
     mkdir("/sdcard/msx/bios", 0777);
     mkdir("/sdcard/msx/games", 0777);
     return 1;
+}
+
+void sd_unmount(void) {
+    if (!sCard) return;
+    esp_vfs_fat_sdcard_unmount("/sdcard", sCard);
+    sCard = nullptr;
+    spi_bus_free(sHost);
+    Serial.printf("SD: unmounted, %u bytes of heap back\n", (unsigned)ESP.getFreeHeap());
 }

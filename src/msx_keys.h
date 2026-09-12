@@ -40,6 +40,10 @@ int  msx_keys_typing(void); /* 1 while a queued string is still going in */
  * only mark them as dead). `which` is 0, 1 or 2. */
 void msx_keys_probe_dead(int which, int shift, char base);
 
+/* Press one arbitrary matrix position, for mapping out what the BIOS
+ * decodes. `row` 0-10, `bit` a single set bit. */
+void msx_keys_press_matrix(int row, int bit, int shift);
+
 /* Names the accent currently pending from a dead key, for the serial
  * console's status line. Returns "" when nothing is pending. */
 const char *msx_keys_pending_accent(void);

@@ -27,8 +27,7 @@ screen up and was reverted, so it needs doing properly rather than
 quickly. Verified by driving the
 machine over the serial console and reading its screen back out of the
 emulated VDP; see "Checking it without a keyboard in the room" in
-docs/KEYBOARD.md. The one thing not yet verified on hardware is an actual
-BLE keyboard pairing, because none was in the room at the time.
+docs/KEYBOARD.md. A BLE keyboard pairs and types, verified on hardware.
 
 ## How it's built (context for future changes)
 
@@ -42,11 +41,14 @@ BLE keyboard pairing, because none was in the room at the time.
 - **Video** (`lib/fmsx_core/video/AVideo.i` + `msx_display.h` +
   `src/display_bridge.cpp`): AVideo.i is also vendored (from the same
   esplay-fMSX project, MIT-licensed portion by Schuemi), trimmed to
-  remove a touch-driven virtual keyboard overlay (~300KB framebuffer we
-  don't have RAM for and don't need with a real keyboard) and to drop a
-  byte-swap that was specific to that project's raw SPI driver (TFT_eSPI
-  wants normal RGB565 order). `display_bridge.cpp` is the one file that
-  actually talks to TFT_eSPI.
+  remove a touch-driven virtual keyboard overlay, and rewritten to render
+  one 24-line band at a time instead of keeping a whole frame (see
+  docs/MEMORY.md for why). `display_bridge.cpp` is the one file that talks
+  to TFT_eSPI, and it owns where the picture lands and at what scale.
+  **An earlier note here claimed TFT_eSPI wants normal RGB565 order and
+  that the byte swap was dropped. That was wrong and it cost hours**:
+  `pushPixels` streams the buffer raw and needs `setSwapBytes(true)`. See
+  docs/DISPLAY.md, which collects that and the other two display faults.
 - **Keyboard**: split in two on purpose. `src/ble_keyboard.cpp` is only
   transport (NimBLE central, Boot Keyboard Input Report 0x2A22, falling
   back to generic Report 0x2A4D). Everything about what the keys *mean* -
@@ -81,10 +83,14 @@ BLE keyboard pairing, because none was in the room at the time.
   generated file is present, and otherwise the C-BIOS in `src/cbios_data.c`
   is used - which boots cartridges but not MSX-BASIC. An `MSX.ROM` on an
   SD card still overrides both.
-- **SD card** (`src/sd_mount.cpp`): mounted via ESP-IDF's
-  `esp_vfs_fat_sdspi_mount` (not Arduino's `SD.h`) specifically so the
-  vendored fMSX core's plain `fopen()`/`fread()` calls on hardcoded
-  `/sdcard/msx/...` paths work unmodified.
+- **SD card** (`src/sd_mount.cpp`): via ESP-IDF's
+  `esp_vfs_fat_sdspi_mount` (not Arduino's `SD.h`) so the vendored core's
+  plain `fopen()`/`fread()` on hardcoded `/sdcard/msx/...` paths work
+  unmodified. **Not mounted at boot** - see open item 3. Two things here
+  are load-bearing: the host must be set to `SPI3_HOST` explicitly,
+  because the default is the display's bus and taking it blanks the panel
+  with no error at all, and `max_files` must stay small, because FATFS
+  keeps a 4kB cache per open file.
 - **CI** (`.github/workflows/build.yml`): builds the `fnk0103` PlatformIO
   env on every push/PR and uploads `firmware.bin` +
   `bootloader.bin`/`partitions.bin` as an artifact, so a full ESP32
@@ -96,30 +102,37 @@ BLE keyboard pairing, because none was in the room at the time.
 
 ## Known open items / likely next requests
 
-1. **Accented/Brazilian keyboard layout.** The owner has his own dumped
-   Brazilian MSX BIOS ROM (supports ç, á, é, ã, etc.) but the exact
-   matrix row/column positions for those keys depend on which Brazilian
-   MSX model it's from (Gradiente Expert, Sharp/Epcom Hotbit, Sony HB all
-   differ). Needs that model identified, then extend `Keys[]` in
-   `lib/fmsx_core/fMSX/MSX.c` and wire the extra HID keycodes
-   (0x32, 0x64, and the ABNT-specific ones) in `src/msx_keys.h`.
-2. **No sound.** `PlayAllSound()` is stubbed in `src/platform_glue.c`.
-   PSG/SCC/OPLL mixing already runs correctly inside the core; wiring it
-   to the board's I2S/DAC output (pins noted in README) is the remaining
-   work.
-3. **Single hardcoded game ROM** (`/sdcard/msx/games/game.rom` in
-   `src/main.cpp`). An on-screen ROM browser is the natural next step.
-4. **No floppy / MSX-BASIC** - inherent to using C-BIOS; would need the
-   owner's own BIOS + a DISK.ROM to lift.
-5. **No joystick emulation** - `Joystick()`/`Mouse()` in
+1. **Speed.** ~42 fps at 1:1 and ~25-33 fps at the 1.5x scale, against
+   the 60 a real MSX runs at. Because fMSX paces the Z80 against the
+   frame, that is the whole machine running slow, not just a late picture.
+   The blit is synchronous on the emulation task since the video layer
+   went to a band buffer. Two ways back: overlap it with DMA (a first
+   attempt with `pushPixelsDMA` and two line buffers put a flashing white
+   screen up and was reverted), or give the blit its own task again and
+   pay one more band of RAM. See docs/DISPLAY.md.
+2. **Nobody has heard the sound.** `InitSound()` reports 22050Hz,
+   `PlayAllSound()` feeds `RenderAndPlayAudio()` into the I2S built-in DAC
+   (`src/audio_glue.c`), and `PLAY` runs without stalling the frame rate,
+   but no sound has been confirmed coming out of the speaker. Freenove's
+   own MP3 example for this board uses `AudioOutputI2S(0, 1)`, the
+   internal-DAC mode, which is what that file drives.
+3. **The SD card is not mounted at boot** (see the note in `setup()`).
+   Nothing needs it - the BIOS is in flash - and mounting costs ~45kB,
+   which with a card in the slot left the emulated VRAM 12 bytes short of
+   fitting. `m 1` on the serial console mounts it on demand. Loading ROMs
+   and anything MSX-DOS-shaped will have to mount it and decide what to
+   give up for the memory; that is the next real design question here.
+4. **No cartridge loading yet.** `ROMName[0]` still points at a fixed
+   `/sdcard/msx/games/game.rom`. A ROM browser is the natural next step
+   and needs item 3 settled first.
+5. **No floppy, no MSX-DOS.** Would need a DISK.ROM and the card mounted
+   for the life of the session.
+6. **No joystick emulation** - `Joystick()`/`Mouse()` in
    `src/platform_glue.c` return 0 unconditionally. Cursor-key-as-joystick
    games still work via the keyboard.
-6. **PSRAM uncertainty**: Freenove's own datasheet bundle for this board
-   only names the plain (non-PSRAM) WROOM-32E part, so the whole memory
-   budget (64KB emulated RAM + 16KB VRAM + ~54KB framebuffer + BLE stack)
-   was sized to fit in ~520KB of internal SRAM without PSRAM. If real
-   hardware testing shows PSRAM is actually present, there's more
-   headroom available (e.g. for #2 above).
+7. **PSRAM**: settled, there is none. `esptool flash-id` reports an
+   ESP32-D0WD-V3 with no embedded PSRAM and 4MB of flash. The whole memory
+   budget in docs/MEMORY.md is built on that.
 
 ## Licensing (do not relax this casually)
 

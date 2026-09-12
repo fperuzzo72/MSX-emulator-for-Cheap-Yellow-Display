@@ -78,6 +78,54 @@ volatile unsigned int MSXFrames = 0; /* incremented in platform_glue.c */
 
 unsigned int msx_frame_count(void) { return MSXFrames; }
 
+/* Neither of these is declared in MSX.h, only defined in MSX.c: RAM[] is
+ * the eight 8kB pages currently mapped into the Z80's address space, and
+ * EnWrite says which 16kB slots are writable RAM rather than ROM. */
+extern byte *RAM[8];
+extern byte EnWrite[4];
+
+/* MSX system variables, the same on every machine of this generation:
+ * KEYBUF is the BIOS's 40-byte keyboard ring, PUTPNT is where the next
+ * character goes in and GETPNT where the next one comes out. */
+#define MSX_KEYBUF_START 0xFBF0
+#define MSX_KEYBUF_END   0xFC17   /* inclusive, 40 bytes */
+#define MSX_PUTPNT       0xF3F8
+#define MSX_GETPNT       0xF3FA
+#define MSX_CAPST        0xFCAB
+
+static byte msxPeek(word A)          { return RAM[A >> 13][A & 0x1FFF]; }
+static void msxPoke(word A, byte V)  { RAM[A >> 13][A & 0x1FFF] = V; }
+static word msxPeekW(word A)         { return (word)(msxPeek(A) | (msxPeek(A + 1) << 8)); }
+static void msxPokeW(word A, word V) { msxPoke(A, V & 0xFF); msxPoke(A + 1, V >> 8); }
+
+int msx_type_char(unsigned char code) {
+    word put  = msxPeekW(MSX_PUTPNT);
+    word get  = msxPeekW(MSX_GETPNT);
+    word next;
+
+    /* Refuse unless page 3 really is writable RAM and the pointers are
+     * inside the ring. Before BASIC is up neither holds, and this would
+     * otherwise scribble on a ROM image. */
+    if (!EnWrite[MSX_PUTPNT >> 14]) return 0;
+    if (put < MSX_KEYBUF_START || put > MSX_KEYBUF_END) return 0;
+
+    next = (word)(put + 1);
+    if (next > MSX_KEYBUF_END) next = MSX_KEYBUF_START;
+    if (next == get) return 0; /* ring full */
+
+    msxPoke(put, code);
+    msxPokeW(MSX_PUTPNT, next);
+    return 1;
+}
+
+int msx_caps_on(void) { return msxPeek(MSX_CAPST) != 0; }
+
+int msx_peek(int addr) {
+    if (addr < 0 || addr > 0xFFFF) return -1;
+    if (!RAM[addr >> 13]) return -1;
+    return msxPeek((word)addr);
+}
+
 int msx_char_pattern(int code, uint8_t *rows8) {
     int i;
     if (!ChrGen || code < 0 || code > 255) return 0;

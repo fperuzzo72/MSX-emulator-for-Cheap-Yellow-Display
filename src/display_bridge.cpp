@@ -26,11 +26,12 @@ static uint16_t lineBuf[WIDTH_OVERLAY];
  * and very nearly fills the panel, at the cost of every third column and
  * row being a repeat. Neither is obviously right on a text machine, so
  * both are here and `z` on the serial console switches between them.
+ * 1.5x is the default because it is the one you can read across a desk.
  * ---------------------------------------------------------------- */
 #define MSX_PIC_W 256
 #define MSX_PIC_H 216
 
-static int sScale = 1; /* 1 = one panel pixel per MSX pixel, 2 = three per two */
+static int sScale = 2; /* 1 = one panel pixel per MSX pixel, 2 = three per two */
 
 static inline int destW(void)  { return sScale == 1 ? MSX_PIC_W : MSX_PIC_W * 3 / 2; }
 static inline int destH(void)  { return sScale == 1 ? MSX_PIC_H : MSX_PIC_H * 3 / 2; }

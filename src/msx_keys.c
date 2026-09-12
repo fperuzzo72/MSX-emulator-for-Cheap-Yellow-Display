@@ -89,18 +89,22 @@ enum { ACC_NONE = 0, ACC_ACUTE, ACC_GRAVE, ACC_TILDE, ACC_CIRCUMFLEX, ACC_DIAERE
 struct DeadKey {
     unsigned char idx;     /* matrix position of the dead key            */
     unsigned char shift;   /* whether it needs Shift                     */
-    char          literal; /* the accent as a character in its own right,
-                            * 0 when this machine has no key for it      */
+    unsigned char literal; /* the accent as a character in its own right.
+                            * Typed through the keyboard buffer, not the
+                            * matrix, because this keyboard has no key at
+                            * all for ~ or ` even though the character set
+                            * has both (0x7E and 0x60, glyphs confirmed on
+                            * the machine). */
 };
 
 /* accent -> which dead-key position, and whether it needs Shift. */
 static const struct DeadKey kDead[] = {
-    /* ACC_NONE       */ {0, 0, 0},
-    /* ACC_ACUTE      */ {IDX_ACUTE_GRAVE, 0, '\''},
-    /* ACC_GRAVE      */ {IDX_ACUTE_GRAVE, 1, 0},
-    /* ACC_TILDE      */ {IDX_TILDE_CIRC,  0, 0},
-    /* ACC_CIRCUMFLEX */ {IDX_TILDE_CIRC,  1, '^'},
-    /* ACC_DIAERESIS  */ {IDX_DIAERESIS,   0, '"'},
+    /* ACC_NONE       */ {0, 0, 0x00},
+    /* ACC_ACUTE      */ {IDX_ACUTE_GRAVE, 0, 0x27}, /* ' */
+    /* ACC_GRAVE      */ {IDX_ACUTE_GRAVE, 1, 0x60}, /* ` */
+    /* ACC_TILDE      */ {IDX_TILDE_CIRC,  0, 0x7E}, /* ~ */
+    /* ACC_CIRCUMFLEX */ {IDX_TILDE_CIRC,  1, 0x5E}, /* ^ */
+    /* ACC_DIAERESIS  */ {IDX_DIAERESIS,   0, 0x22}, /* " */
 };
 
 static const char *kAccentNames[] = {
@@ -141,12 +145,18 @@ static const char *kAccentNames[] = {
 
 /* HID usage code -> a control-half matrix position (0 = not one). */
 static const unsigned short kHidControl[0x68] = {
-    [0x28] = K_RETURN, [0x29] = K_ESC,  [0x2A] = K_BS,   [0x2B] = K_TAB,
+    /* Esc is the MSX's STOP key here, not its ESC. A PC keyboard has no
+     * BREAK, and Ctrl+STOP is the only way to interrupt a running BASIC
+     * program, so Esc has to be the key that can do it: Ctrl+Esc breaks,
+     * Esc on its own pauses a listing. The machine's real ESC moved to
+     * PageDown, which nothing else wanted. */
+    [0x28] = K_RETURN, [0x29] = K_STOP, [0x2A] = K_BS,   [0x2B] = K_TAB,
     [0x2C] = K_SPACE,  [0x39] = K_CAPS,
     [0x3A] = K_F1, [0x3B] = K_F2, [0x3C] = K_F3, [0x3D] = K_F4, [0x3E] = K_F5,
     [0x49] = K_INS, [0x4A] = K_HOME, [0x4C] = K_DEL,
-    [0x4D] = K_STOP,  /* End -> STOP, the usual emulator convention */
+    [0x4D] = K_STOP,  /* End -> STOP as well */
     [0x4B] = K_SELECT,/* PageUp -> SELECT */
+    [0x4E] = K_ESC,   /* PageDown -> the MSX's own ESC */
     [0x4F] = K_RIGHT, [0x50] = K_LEFT, [0x51] = K_DOWN, [0x52] = K_UP,
     [0x58] = K_RETURN,
 };
@@ -209,28 +219,69 @@ static unsigned char altGrAccent(unsigned char hid) {
     }
 }
 
-/* Letters an accent may legally sit on. Anything else means the user
- * typed the dead key as a literal, exactly like on a PC. */
-static int composes(unsigned char accent, char c) {
-    char l = (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
-    switch (accent) {
-        /* Only the combinations this BIOS's character set actually has.
-         * Anything else has to fall through to "dead key as a literal",
-         * or the accent would silently vanish - which is what the probe
-         * runs showed happening for things like u-grave. */
-        case ACC_ACUTE:
-            return l == 'a' || l == 'e' || l == 'i' || l == 'o' || l == 'u';
-        case ACC_CIRCUMFLEX:
-            return l == 'a' || l == 'e' || l == 'o';
-        case ACC_TILDE:
-            return l == 'a' || l == 'o';
-        case ACC_GRAVE:
-            return l == 'a';
-        case ACC_DIAERESIS:
-            return l == 'u';
-        default:
-            return 0;
+/* Accent + letter -> the character code this machine actually has.
+ *
+ * Measured on the hardware, one pair at a time, because the Hotbit's
+ * character set is NOT the standard MSX international one. Acute+A is
+ * 0x84 here; in the international set 0x84 is a-diaeresis. Guessing from
+ * the published MSX table would have produced confident nonsense.
+ *
+ * A zero means this machine has no such character, and there are plenty:
+ * grave only exists on an A, diaeresis only on a U, and neither acute+C
+ * nor tilde+N compose at all. That is not a gap, it is a Brazilian
+ * keyboard - c-cedilla has a key of its own here rather than being built
+ * from a dead key, which is why `'c` has to be special-cased to it.
+ *
+ * Filled in by tools/measure_charset.py; see docs/KEYBOARD.md. */
+struct Composed {
+    unsigned char accent;
+    char          base;   /* always lower case */
+    unsigned char upper;  /* code when the machine would print a capital */
+    unsigned char lower;
+};
+
+static const struct Composed kComposed[] = {
+    /*  accent          base  UPPER  lower */
+    { ACC_ACUTE,      'a',  0x84,  0xA0 },
+    { ACC_ACUTE,      'e',  0x90,  0x82 },
+    { ACC_ACUTE,      'i',  0x89,  0xA1 },
+    { ACC_ACUTE,      'o',  0x8A,  0xA2 },
+    { ACC_ACUTE,      'u',  0x8B,  0xA3 },
+    { ACC_GRAVE,      'a',  0x8F,  0x85 },
+    { ACC_GRAVE,      'u',  0x00,  0x97 },
+    { ACC_TILDE,      'a',  0xB0,  0xB1 },
+    { ACC_TILDE,      'o',  0xB4,  0xB5 },
+    { ACC_CIRCUMFLEX, 'a',  0x8C,  0x83 },
+    { ACC_CIRCUMFLEX, 'e',  0x8D,  0x88 },
+    { ACC_CIRCUMFLEX, 'o',  0x8E,  0x93 },
+    { ACC_CIRCUMFLEX, 'u',  0x00,  0x96 },
+    { ACC_DIAERESIS,  'u',  0x9A,  0x81 },
+    /* c-cedilla is not composed on this machine - acute+c produces a
+     * plain c. It has a key of its own instead, and these are the codes
+     * that key produces, from the BIOS's own table. US-International
+     * users type it as ' then c, so that is what this entry is for. */
+    { ACC_ACUTE,      'c',  0x80,  0x87 },
+    { 0, 0, 0, 0 }
+};
+
+/* Worth knowing when reading the table above: the LOWER column is the
+ * standard MSX international character set (a-acute at 0xA0, e-acute at
+ * 0x82 and so on), but the UPPER column is not - the Hotbit put its
+ * capital accented letters over glyphs that the standard set uses for
+ * something else entirely. 0x84 is A-acute here and a-diaeresis in the
+ * published table. Every value above was read off the machine rather than
+ * from that table, which is the only reason they are right. */
+
+/* Returns the character code for `accent` over `base`, or 0 if this
+ * machine has no such character. */
+static unsigned char composedCode(unsigned char accent, char base, int upper) {
+    char l = (base >= 'A' && base <= 'Z') ? (char)(base + 32) : base;
+    int i;
+    for (i = 0; kComposed[i].base; i++) {
+        if (kComposed[i].accent != accent || kComposed[i].base != l) continue;
+        return upper ? kComposed[i].upper : kComposed[i].lower;
     }
+    return 0;
 }
 
 /* ---------------------------------------------------------------- */
@@ -401,6 +452,11 @@ static int typingFillReport(unsigned char *report, int frozen) {
     return 1;
 }
 
+void msx_keys_press_matrix(int row, int bit, int shift) {
+    if (row < 0 || row > 15 || bit <= 0 || bit > 0xFF) return;
+    queuePush((unsigned char)row, (unsigned char)bit, (unsigned char)(shift ? 1 : 0));
+}
+
 void msx_keys_probe_dead(int which, int shift, char base) {
     static const unsigned char idx[3] = { IDX_ACUTE_GRAVE, IDX_DIAERESIS, IDX_TILDE_CIRC };
     if (which < 0 || which > 2) return;
@@ -439,29 +495,34 @@ static void queueChar(char c) {
  * front of it (ACC_NONE for a plain character). */
 static void emitChar(unsigned char accent, char c) {
     if (accent != ACC_NONE) {
-        if (composes(accent, c)) {
-            /* The BIOS does the composing: dead key, then the letter -
-             * and the letter has to go in UNSHIFTED. Holding Shift with
-             * it makes this BIOS drop the accent and print the bare
-             * letter, which is how a real Hotbit behaves too: with CAPS
-             * on (and it boots with CAPS on) you never hold Shift to get
-             * a capital. So the machine's own CAPS state decides the
-             * case, exactly as it would under someone's fingers. */
-            char base = (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
-            queuePushIdx(kDead[accent].idx, kDead[accent].shift);
-            queueChar(base);
+        /* The case of an accented letter is ours to decide, which is the
+         * whole reason this goes through the keyboard buffer rather than
+         * through the dead keys. Driving the BIOS's own composition meant
+         * the case followed CAPS and Shift did nothing at all, because
+         * this BIOS drops the accent outright when Shift is held with the
+         * letter - so a capital accented letter meant reaching for CAPS.
+         *
+         * Case here is worked out the way the machine works it out for an
+         * ordinary letter: CAPS exclusive-or Shift. `c` arrived already
+         * shifted, so its case is the Shift state. */
+        int shifted = (c >= 'A' && c <= 'Z');
+        int upper = msx_caps_on() ? !shifted : shifted;
+        unsigned char code = composedCode(accent, c, upper);
+        if (code) {
+            msx_type_char(code);
             return;
         }
-        /* It does not compose, so the user meant the accent as a
-         * character - typing " then C, or ' then Space. Pressing the dead
-         * key here would be wrong: this BIOS silently drops a dead key it
-         * cannot use, which is exactly how the quotes went missing from
-         * PRINT "..." the first time round. Use the machine's own key for
-         * the character instead, where it has one: " is Shift+6 here and
-         * ' is Shift+the key right of P, neither of them a dead key. */
-        if (kDead[accent].literal) queueChar(kDead[accent].literal);
+        /* No such character on this machine, so the user meant the accent
+         * as a character: `"` then `S`, or `'` then Space. Type the accent
+         * itself where there is one, then carry on with what they pressed.
+         * Pressing the dead key here would be wrong - this BIOS silently
+         * swallows a dead key it cannot use, which is how the quotes went
+         * missing from PRINT "..." the first time round. */
+        if (kDead[accent].literal) msx_type_char(kDead[accent].literal);
+        /* A space after a dead key is part of the sequence, not a space to
+         * type: `'` then Space is an apostrophe and nothing else. */
+        if (c == ' ') return;
     }
-    if (c == ' ' && accent != ACC_NONE) return; /* the accent was the point */
     queueChar(c);
 }
 
@@ -548,16 +609,21 @@ void msx_keys_frame(void) {
         if (kHidControl[hid]) {
             unsigned short m = kHidControl[hid];
             if (sPendingAccent != ACC_NONE) {
-                /* An accent was waiting and the next key is Space or
-                 * Return, so the user meant the accent as a character:
-                 * ' then Space is an apostrophe. Both go through the
-                 * queue, in that order. */
+                /* An accent was waiting and a control key arrived, so the
+                 * user meant the accent as a character of its own. */
                 if (isNew) {
                     if (kDead[sPendingAccent].literal)
-                        queueChar(kDead[sPendingAccent].literal);
-                    queuePush(M_ROW(m), M_BIT(m), 0);
+                        msx_type_char(kDead[sPendingAccent].literal);
                     sPendingAccent = ACC_NONE;
                     markConsumed(hid);
+                    /* Space is SWALLOWED: on a US-International keyboard
+                     * `'` then Space is an apostrophe and nothing else,
+                     * not an apostrophe and a space. Anything else - a
+                     * Return, an arrow - still does its own job. */
+                    if (m != K_SPACE) {
+                        state[M_ROW(m)] &= (unsigned char)~M_BIT(m);
+                        continue;
+                    }
                 }
                 continue;
             }

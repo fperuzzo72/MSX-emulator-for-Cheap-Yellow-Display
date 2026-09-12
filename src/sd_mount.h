@@ -12,6 +12,16 @@ extern "C" {
  * cartridge games still require a working SD card). */
 int sd_mount_init(void);
 
+/* Let the card go once the core has read what it needed off it.
+ *
+ * The FAT driver and its caches cost around 45kB, which on this board is
+ * the difference between the BLE stack having room to accept a connection
+ * and not. The emulator only touches the card while StartMSX() loads
+ * BIOS and cartridge images; after that a cartridge machine does not read
+ * its media again, so neither do we. Putting a different game in means
+ * rebooting, which is also what it meant in 1985. */
+void sd_unmount(void);
+
 #ifdef __cplusplus
 }
 #endif
