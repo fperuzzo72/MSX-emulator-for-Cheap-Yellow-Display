@@ -54,6 +54,8 @@ void Keyboard(void) {
      * turns the latest report into this machine's key matrix. */
     msx_keys_frame();
 
+    selector_poll_open();
+
     /* While the selector is open the machine stands still. Blocking here
      * is the pause: this hook is called once a frame, so not returning
      * from it is exactly "the machine is not running". */

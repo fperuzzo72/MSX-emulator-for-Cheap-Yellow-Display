@@ -37,6 +37,26 @@ void selector_open(void) {
 
 int selector_active(void) { return sActive ? 1 : 0; }
 
+/* A press held for about a second. A tap would open it by accident during
+ * a game; a hold is deliberate and needs no particular place to aim at,
+ * which matters because the picture moves around with the scale. */
+#define HOLD_MS 900
+
+void selector_poll_open(void) {
+    static uint32_t downSince;
+    uint16_t tx, ty;
+
+    if (sActive) return;
+
+    if (!panel_tft().getTouch(&tx, &ty)) { downSince = 0; return; }
+
+    if (!downSince) { downSince = millis(); return; }
+    if (millis() - downSince >= HOLD_MS) {
+        downSince = 0;
+        selector_open();
+    }
+}
+
 static void draw(TFT_eSPI &tft) {
     int n = machine->entry_count();
 

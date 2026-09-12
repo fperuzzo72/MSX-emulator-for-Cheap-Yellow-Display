@@ -232,6 +232,8 @@ static void runFrame(void) {
         return;
     }
 
+    selector_poll_open();
+
     if (display_take_repaint()) { sLastBorder = 0xFF; markAll(); spectrum_help_invalidate(); }
     spectrum_help_draw();
 
