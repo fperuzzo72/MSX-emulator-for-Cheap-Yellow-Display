@@ -871,6 +871,7 @@ void RefreshLine1(register byte Y) // XPal
   P=GetBuffer(Y,BGColor, 1);
   if(!P) return;
 
+
   if(!ScreenON) ClearLine(P,BGColor);
   else
   {

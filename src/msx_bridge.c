@@ -16,7 +16,16 @@
  * card and no file, LoadROM() fails for the cartridge and the machine
  * boots with no cartridge inserted - which on a real BIOS means
  * MSX-BASIC, exactly what we want. */
+/* Where the cartridge comes from. With a cartridge built into the
+ * firmware that is a sentinel rather than a path - see LOCAL_CART_PATH in
+ * MSX.c - because the board has no room to hold a 32kB image in RAM and
+ * the flash copy is used in place. Without one, the SD path is tried and
+ * simply fails, which leaves the slot empty and the machine in BASIC. */
+#ifdef HAVE_LOCAL_CART
+static const char *kGameRomPath = "flash:cart";
+#else
 static const char *kGameRomPath = "/sdcard/msx/games/game.rom";
+#endif
 
 int msx_video_prealloc(void) { return PreallocVideo(); }
 
@@ -30,7 +39,7 @@ void msx_run(void) {
      * the video layer holds one 24-line band (6kB) instead of a whole
      * frame (55kB) - see docs/MEMORY.md. */
     RAMPages = 4;
-    VRAMPages = 1; /* 16KB: what a TMS9918 has, and all it can address */
+    VRAMPages = 1; /* 16kB, what a TMS9918 has; safe now the tables are clamped */
 
     /* The core never calls these itself: every fMSX port is expected to
      * bring its own machine up before StartMSX() and tear it down after.

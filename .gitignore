@@ -9,3 +9,4 @@ hotbi13p/
 src/hotbit_bios_data.c
 .DS_Store
 .pio/
+src/local_cart_data.c

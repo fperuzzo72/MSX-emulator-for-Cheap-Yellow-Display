@@ -16,3 +16,10 @@ if os.path.isfile(bios_c):
     print("local BIOS: src/hotbit_bios_data.c found, embedding it (MSX-BASIC available)")
 else:
     print("local BIOS: not present, falling back to C-BIOS (cartridge-only, no MSX-BASIC)")
+
+cart_c = os.path.join(env.subst("$PROJECT_SRC_DIR"), "local_cart_data.c")
+if os.path.isfile(cart_c):
+    env.Append(CPPDEFINES=["HAVE_LOCAL_CART"])
+    print("local cartridge: src/local_cart_data.c found, embedding it")
+else:
+    print("local cartridge: none, the machine boots with an empty slot")
