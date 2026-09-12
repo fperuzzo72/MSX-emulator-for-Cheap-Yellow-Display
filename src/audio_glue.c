@@ -21,12 +21,20 @@
 #include "EMULib.h"
 #include "Sound.h"
 
-/* The board has an amplifier behind an enable pin, and it is enabled by
- * pulling that pin LOW. Freenove's own MP3 example for this board does
- * exactly this before playing anything (AUDIO_EN 4, digitalWrite LOW).
- * Without it the DAC dutifully drives GPIO25/26 and nothing comes out of
- * the speaker, which is precisely what was happening here: the emulator
- * was mixing sound correctly and feeding it to a switched-off amp. */
+/* The audio path on this board, read off Freenove's own schematic
+ * (Datasheet/3.5inch_ESP32-32E_..._V1.0/Schematic):
+ *
+ *   GPIO26 (DAC channel 2) -> AUDIO_IN -> SC8002B amplifier -> SP+/SP-
+ *   GPIO4  -> the amplifier's SHUTDOWN pin, active LOW
+ *
+ * Two things follow. The enable pin has to be pulled LOW or the amplifier
+ * stays shut down no matter what the DAC is doing, which is what Freenove's
+ * MP3 example does before playing anything and what nothing here did.
+ *
+ * And SP+/SP- is a two-pin header, not a fitted speaker: this board ships
+ * with the amplifier but WITHOUT a speaker on it. A small 8-ohm speaker
+ * has to be connected there before any of this can be heard. Everything
+ * upstream can be perfect and still silent. */
 #define AUDIO_EN_PIN    GPIO_NUM_4
 #define AUDIO_EN_ACTIVE 0
 
@@ -109,8 +117,12 @@ unsigned int WriteAudio(sample *Data, unsigned int Length) {
         if (n > sizeof(conv) / sizeof(conv[0]) / 2) n = sizeof(conv) / sizeof(conv[0]) / 2;
         for (i = 0; i < n; i++) {
             unsigned short v = (unsigned short)((int)Data[done + i] + 32768);
-            conv[i * 2]     = v; /* right channel = GPIO25 */
-            conv[i * 2 + 1] = v; /* left channel  = GPIO26 */
+            /* Both DAC channels get the sample. Only GPIO26 reaches the
+             * amplifier on this board; GPIO25 is driven anyway because it
+             * costs nothing and makes this work on boards wired either
+             * way. */
+            conv[i * 2]     = v;
+            conv[i * 2 + 1] = v;
         }
         if (i2s_write(AUDIO_PORT, conv, n * 2 * sizeof(unsigned short), &wrote,
                       pdMS_TO_TICKS(2)) != ESP_OK)

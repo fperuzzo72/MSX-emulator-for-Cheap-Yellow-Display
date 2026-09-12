@@ -68,3 +68,26 @@ Panel changes asked for from the serial console are queued and performed
 at the top of a frame, on the emulation task. TFT_eSPI must be driven from
 one task only: the console runs on the other core, and drawing from it
 wedged the SPI bus the first time `z` was typed.
+
+## Sound (yes, in the display document, because it is the same lesson)
+
+The board has an SC8002B amplifier and brings its output to a **two-pin
+SP+/SP- header**. It does **not** have a speaker fitted. One has to be
+connected there - a small 8-ohm speaker - before anything can be heard.
+
+The path, from Freenove's schematic:
+
+```
+GPIO26 (DAC channel 2) -> AUDIO_IN -> SC8002B -> SP+ / SP- header
+GPIO4                  -> SHUTDOWN, active LOW
+```
+
+GPIO4 still had to be pulled low; it never was, and that alone would have
+kept the amplifier off. But with it fixed there was still no sound,
+because there was nothing to make sound with.
+
+The instruments on the serial console for this: `a [hz] [ms]` puts a
+square wave straight into the DAC with the emulator out of the way, and
+`h` reports how many samples the core has actually handed over. When that
+number climbs and `a` produces nothing audible, the fault is at or after
+the amplifier - which is exactly where it was.
