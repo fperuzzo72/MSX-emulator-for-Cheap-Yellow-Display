@@ -134,6 +134,33 @@ rest of fMSX and is MSX-only, excluded from the Spectrum build by
    ESP32-D0WD-V3 with no embedded PSRAM and 4MB of flash. The whole memory
    budget in docs/MEMORY.md is built on that.
 
+## The Spectrum tape, and why it is only half solved
+
+A `.tap` is loaded by trapping the ROM's own LD-BYTES at 0x0556 and
+handing over the next block whole (`src/spectrum/spectrum_tape.c`). The
+trap is an opcode planted in the ROM, and this machine's ROM runs from
+flash, so loading a tape first copies the ROM into RAM and patches the
+copy - that is what `spectrum_tape_rom()` is for.
+
+This works for any game that loads through the ROM and **only** for those.
+Measured: Halls of the Things loads all 3 blocks and runs. Nebulus takes 4
+blocks and stops at PC 0x05EE, because by then its own turbo loader has
+taken over and never calls LD-BYTES again. Most commercial tapes past 1985
+are in that second group.
+
+The real fix is to stop faking the loader and emulate the signal: drive
+bit 6 of port 0xFE from a generated pulse train and let whatever loader
+the game brought read it. That was attempted and **does not work yet** -
+kept in `src/spectrum/spectrum_tape_pulses.c.wip`, outside the build. The
+decisive measurement, worth not repeating: with pulses, Halls of the
+Things - which the ROM loader alone loads end to end - came back at 7
+restarted blocks with PC inside LD-BYTES and a blank screen. So the fault
+is in the pulse generation or its timing, not in anyone's custom loader.
+Suspects, in order: the level/edge semantics of `spectrum_tape_ear()`, the
+PAUSE-to-PILOT transition, and the motor-idle-stop path resetting the next
+edge. The clock is not a suspect: `ExecZ80` does set and decrement
+`ICount`, so frames*69888 + (69888 - ICount) is sound.
+
 ## Licensing (do not relax this casually)
 
 `LICENSE` at the repo root is MIT but explicitly scoped (see its "NOTE ON

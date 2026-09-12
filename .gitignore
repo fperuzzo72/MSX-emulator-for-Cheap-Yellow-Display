@@ -16,3 +16,6 @@ src/spectrum/spectrum_tape_data.c
 
 # Local ROM images. Other people's, and they stay out of the repo.
 roms/
+
+# work in progress, kept out of the build
+*.wip
