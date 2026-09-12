@@ -145,18 +145,18 @@ static const char *kAccentNames[] = {
 
 /* HID usage code -> a control-half matrix position (0 = not one). */
 static const unsigned short kHidControl[0x68] = {
-    /* Esc is the MSX's STOP key here, not its ESC. A PC keyboard has no
-     * BREAK, and Ctrl+STOP is the only way to interrupt a running BASIC
-     * program, so Esc has to be the key that can do it: Ctrl+Esc breaks,
-     * Esc on its own pauses a listing. The machine's real ESC moved to
-     * PageDown, which nothing else wanted. */
-    [0x28] = K_RETURN, [0x29] = K_STOP, [0x2A] = K_BS,   [0x2B] = K_TAB,
+    [0x28] = K_RETURN, [0x29] = K_ESC,  [0x2A] = K_BS,   [0x2B] = K_TAB,
     [0x2C] = K_SPACE,  [0x39] = K_CAPS,
     [0x3A] = K_F1, [0x3B] = K_F2, [0x3C] = K_F3, [0x3D] = K_F4, [0x3E] = K_F5,
     [0x49] = K_INS, [0x4A] = K_HOME, [0x4C] = K_DEL,
-    [0x4D] = K_STOP,  /* End -> STOP as well */
-    [0x4B] = K_SELECT,/* PageUp -> SELECT */
-    [0x4E] = K_ESC,   /* PageDown -> the MSX's own ESC */
+    /* The MSX keys a PC keyboard has no cap for go on the page keys:
+     * PageDown is STOP, so Ctrl+PageDown is BREAK and is the way to
+     * interrupt a running BASIC program, and PageUp is SELECT. End is
+     * STOP as well, which costs nothing and is the usual emulator
+     * convention. */
+    [0x4E] = K_STOP,
+    [0x4D] = K_STOP,
+    [0x4B] = K_SELECT,
     [0x4F] = K_RIGHT, [0x50] = K_LEFT, [0x51] = K_DOWN, [0x52] = K_UP,
     [0x58] = K_RETURN,
 };
@@ -502,11 +502,15 @@ static void emitChar(unsigned char accent, char c) {
          * this BIOS drops the accent outright when Shift is held with the
          * letter - so a capital accented letter meant reaching for CAPS.
          *
-         * Case here is worked out the way the machine works it out for an
-         * ordinary letter: CAPS exclusive-or Shift. `c` arrived already
-         * shifted, so its case is the Shift state. */
+         * Case here is worked out the way this machine works it out for an
+         * ordinary letter, which was measured rather than assumed: with
+         * CAPS on, a letter key gives a capital whether or not Shift is
+         * held. So the rule is CAPS OR Shift, not the exclusive-or a PC
+         * would use. Accented letters follow the plain ones; being
+         * consistent with the machine matters more than being able to
+         * reach every case from every state. */
         int shifted = (c >= 'A' && c <= 'Z');
-        int upper = msx_caps_on() ? !shifted : shifted;
+        int upper = msx_caps_on() || shifted;
         unsigned char code = composedCode(accent, c, upper);
         if (code) {
             msx_type_char(code);
@@ -604,6 +608,13 @@ void msx_keys_frame(void) {
         isNew = 1;
         for (j = 0; j < 6; j++) if (sPrevKeys[j] == hid) isNew = 0;
 
+        /* Anything already dealt with on its down edge stays dealt with
+         * until it is released. This check has to come BEFORE the
+         * control-key path: a Space that was swallowed to finish a dead
+         * key would otherwise be pressed again on the very next frame,
+         * which is where the stray space after an accent came from. */
+        if (isConsumed(hid)) continue;
+
         /* Control-half keys pass straight through and stay down for as
          * long as they are physically down. This is the path games use,
          * and it costs them no latency at all. */
@@ -631,8 +642,6 @@ void msx_keys_frame(void) {
             state[M_ROW(m)] &= (unsigned char)~M_BIT(m);
             continue;
         }
-
-        if (isConsumed(hid)) continue;
 
         /* A dead key produces nothing on its own; it colours the next
          * character instead. */
