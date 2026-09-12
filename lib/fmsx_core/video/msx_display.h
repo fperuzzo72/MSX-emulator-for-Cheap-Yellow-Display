@@ -51,6 +51,7 @@ void display_write_frame_msx(short left, short top, short width, short height,
  * top of a frame, on the emulation task, because TFT_eSPI may only be
  * driven from one task. */
 void display_service(void);
+int  display_take_repaint(void);
 
 /* Fill the whole panel, surround included. */
 void display_fill_panel(uint16_t color);

@@ -20,6 +20,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_heap_caps.h"
+#include "esp_timer.h"
 
 #include "Z80.h"
 #include "machine.h"
@@ -40,12 +41,46 @@ static uint8_t  sSpeaker;
 static volatile int sReady;
 static volatile unsigned long sFrames;
 static int sSoundOn = 1;
+static int64_t sNextFrameUs;
 
 /* One band of the picture, the same trick the MSX side uses: a whole
  * 256x192 8bpp frame would be 48kB and this board has no PSRAM. */
 #define BAND_LINES 24
 static uint8_t *sBand;
 static int sBandTop = -1, sBandFill;
+
+/* Which bands have changed since they were last drawn.
+ *
+ * A Spectrum frame usually changes very little, and redrawing all 192
+ * lines regardless was costing 78% of the frame - the blit, not the Z80,
+ * was the whole bottleneck. Writes to the display file and to the
+ * attributes mark the band they land in, and only marked bands are
+ * redrawn. Everything that invalidates the whole picture - the flash
+ * phase turning over, a border change, a scale change - marks all of
+ * them. */
+#define BANDS (192 / BAND_LINES)
+static uint8_t sDirty[BANDS];
+static uint8_t sLastBorder = 0xFF;
+
+static void markAll(void) { memset(sDirty, 1, sizeof(sDirty)); }
+
+/* The pixel row an address in the display file belongs to. The layout is
+ * the interleaved one, so this is the inverse of screenAddr(). */
+static void markAddress(uint16_t A) {
+    int y;
+    if (A >= SPEC_SCREEN && A < SPEC_ATTRS) {
+        int o = A - SPEC_SCREEN;
+        y = ((o & 0x1800) >> 5) | ((o & 0x0700) >> 8) | ((o & 0x00E0) >> 2);
+        sDirty[y / BAND_LINES] = 1;
+    } else if (A >= SPEC_ATTRS && A < SPEC_ATTRS + 768) {
+        /* One attribute covers an 8-pixel cell, which can straddle two
+         * bands only if BAND_LINES is not a multiple of 8. It is, but mark
+         * both anyway rather than depend on that. */
+        int row = (A - SPEC_ATTRS) / 32;
+        sDirty[(row * 8) / BAND_LINES] = 1;
+        sDirty[(row * 8 + 7) / BAND_LINES] = 1;
+    }
+}
 
 /* The Spectrum's fifteen colours: eight at two brightnesses, with black
  * shared. RGB565, built the way the panel wants them. */
@@ -79,6 +114,7 @@ byte RdZ80(word A) {
 void WrZ80(word A, byte V) {
     if (A < SPEC_ROM_SIZE) return;      /* ROM is ROM */
     sRAM[A - SPEC_ROM_SIZE] = V;
+    if (A < SPEC_ATTRS + 768) markAddress(A);
 }
 
 byte InZ80(word Port) {
@@ -168,17 +204,30 @@ static void runFrame(void) {
     int y;
 
     display_service();
+    if (display_take_repaint()) { sLastBorder = 0xFF; markAll(); }
 
     /* Border above the picture, then the picture, then the border below.
      * The border colour can change mid-frame on real hardware; this draws
      * it once per frame, which is right for everything that does not use
      * the border as an effect. */
-    fillRows(0, SPEC_PICTURE_TOP);
-    for (y = 0; y < 192; y++) renderLine(y, flashPhase);
-    flushBand();
-    fillRows(SPEC_PICTURE_TOP + 192, 216 - SPEC_PICTURE_TOP - 192);
+    if (sBorder != sLastBorder) {
+        fillRows(0, SPEC_PICTURE_TOP);
+        fillRows(SPEC_PICTURE_TOP + 192, 216 - SPEC_PICTURE_TOP - 192);
+        sLastBorder = sBorder;
+    }
 
-    if (++flashCounter >= 16) { flashCounter = 0; flashPhase = !flashPhase; }
+    for (y = 0; y < 192; y++)
+        if (sDirty[y / BAND_LINES]) renderLine(y, flashPhase);
+    flushBand();
+    memset(sDirty, 0, sizeof(sDirty));
+
+    /* The flash attribute swaps ink and paper twice a second, so every
+     * cell using it has to be redrawn when the phase turns over. */
+    if (++flashCounter >= 16) {
+        flashCounter = 0;
+        flashPhase = !flashPhase;
+        markAll();
+    }
 
     spectrum_keys_frame();
 
@@ -187,9 +236,34 @@ static void runFrame(void) {
 
     sFrames++;
 
-    /* Hand the core back for a tick. Nothing else here sleeps, and
-     * without this the idle task never runs to feed the watchdog. */
-    vTaskDelay(1);
+    /* Pace the machine to 50Hz.
+     *
+     * With only the changed bands being redrawn there is time to spare -
+     * it free-ran at 105 fps, which is a Spectrum running at twice speed,
+     * and every game would be unplayable. Sleeping the remainder also
+     * feeds the watchdog and leaves the other core alone. If a frame
+     * overruns, the deadline is reset rather than carried forward, so a
+     * slow patch does not turn into a sprint afterwards. */
+    {
+        int64_t now = esp_timer_get_time();
+        if (!sNextFrameUs) sNextFrameUs = now;
+        sNextFrameUs += 1000000 / 50;
+        if (sNextFrameUs > now) {
+            int ms = (int)((sNextFrameUs - now) / 1000);
+            vTaskDelay(ms > 0 ? pdMS_TO_TICKS(ms) : 1);
+        } else if (now - sNextFrameUs > 200000) {
+            /* More than a fifth of a second behind: something held the
+             * machine up and there is no point sprinting to catch up. */
+            sNextFrameUs = now;
+            vTaskDelay(1);
+        } else {
+            /* Slightly late, which happens every frame because a tick is
+             * 1ms and a frame is 20. Keep the deadline rather than
+             * resetting it, or the small overshoot compounds into running
+             * at 46Hz instead of 50. */
+            vTaskDelay(1);
+        }
+    }
 }
 
 /* ---------------------------------------------------------------- */
@@ -224,6 +298,7 @@ void machine_run(void) {
     sCPU.IPeriod = SPEC_FRAME_TSTATES;
     sCPU.IAutoReset = 1;
 
+    markAll();
     sReady = 1;
     for (;;) runFrame();
 #endif

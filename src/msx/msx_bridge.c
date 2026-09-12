@@ -12,25 +12,24 @@
 
 #include "esp_heap_caps.h"
 
-/* Where the cartridge would come from if there were an SD card. With no
- * card and no file, LoadROM() fails for the cartridge and the machine
- * boots with no cartridge inserted - which on a real BIOS means
- * MSX-BASIC, exactly what we want. */
-/* Where the cartridge comes from. With a cartridge built into the
- * firmware that is a sentinel rather than a path - see LOCAL_CART_PATH in
- * MSX.c - because the board has no room to hold a 32kB image in RAM and
- * the flash copy is used in place. Without one, the SD path is tried and
- * simply fails, which leaves the slot empty and the machine in BASIC. */
-#ifdef HAVE_LOCAL_CART
-static const char *kGameRomPath = "flash:cart";
-#else
-static const char *kGameRomPath = "/sdcard/msx/games/game.rom";
-#endif
-
 int msx_video_prealloc(void) { return PreallocVideo(); }
 
+/* Where the cartridge comes from. With cartridges built into the firmware
+ * that is a sentinel rather than a path - see LOCAL_CART_PATH in MSX.c -
+ * because this board has no room to hold an image in RAM and the flash
+ * copy is used in place. With none selected, or none built in, the SD
+ * path is tried, fails, and the machine boots into BASIC. */
+#include "msx_carts.h"
+
+static const char *gameRomPath(void) {
+#ifdef HAVE_LOCAL_CART
+    if (msx_cart_selected() >= 0) return "flash:cart";
+#endif
+    return "/sdcard/msx/games/game.rom";
+}
+
 void msx_run(void) {
-    ROMName[0] = (char *)kGameRomPath;
+    ROMName[0] = (char *)gameRomPath();
 
     /* Brazilian machines are PAL-M: PAL colour encoding on 60Hz/NTSC
      * timing, so NTSC is the right choice for the emulated frame rate. */

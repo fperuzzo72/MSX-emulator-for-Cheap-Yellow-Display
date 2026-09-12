@@ -43,6 +43,11 @@ unsigned long display_full_repaints(void);
  * driven from one task and the console runs on the other core. */
 void display_service(void);
 
+/* Non-zero once if something asked for the whole picture to be redrawn -
+ * a scale change, a test pattern. A machine calls this each frame and
+ * repaints when it says so. */
+int display_take_repaint(void);
+
 /* Picture scale: 1 = one panel pixel per machine pixel, 2 = three panel
  * pixels per two (1.5x, nearly full screen). */
 void display_set_scale(int scale);

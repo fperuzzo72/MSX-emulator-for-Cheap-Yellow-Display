@@ -65,7 +65,16 @@ extern "C" void display_fill_panel(uint16_t color) {
     tft.fillScreen(color);
 }
 
-extern uint16_t VideoTaskCommand; /* AVideo.i: setting it to 1 asks for a full repaint */
+/* A pending "repaint everything" request. It used to poke a global that
+ * lives in the MSX video layer, which is exactly the kind of thing that
+ * stops a second machine existing. The machine asks for it here and picks
+ * it up on its own terms. */
+static volatile int sRepaintWanted = 0;
+extern "C" int display_take_repaint(void) {
+    int v = sRepaintWanted;
+    sRepaintWanted = 0;
+    return v;
+}
 
 /* TFT_eSPI must be driven from ONE task. The serial console runs on core
  * 0 and the emulator on core 1, so a console command that draws directly
@@ -99,13 +108,13 @@ extern "C" void display_service(void) {
         sPendingScale = 0;
         /* The old scale left pixels outside the new picture area. */
         tft.fillScreen(TFT_BLACK);
-        VideoTaskCommand = 1;
+        sRepaintWanted = 1;
     }
     if (sPendingPattern >= 0) {
         int which = sPendingPattern;
         sPendingPattern = -1;
         drawTestPattern(which);
-        VideoTaskCommand = 1; /* let the emulator take the panel back */
+        sRepaintWanted = 1;   /* let the machine take the panel back */
     }
 }
 

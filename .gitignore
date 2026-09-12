@@ -11,3 +11,6 @@ src/msx/hotbit_bios_data.c
 .pio/
 src/msx/local_cart_data.c
 src/spectrum/*_rom_data.c
+
+# Local ROM images. Other people's, and they stay out of the repo.
+roms/

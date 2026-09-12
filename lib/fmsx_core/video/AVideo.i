@@ -752,7 +752,7 @@ uint8_t *GetBuffer(register byte Y,register uint8_t C, register int M)
         display_service();   /* console-requested panel changes land here */
         FirstLine=(ScanLines212? 8:18)+VAdjust;
 
-        if (VideoTaskCommand == 1 || lastBGColor != XPal[BGColor]) {
+        if (VideoTaskCommand == 1 || display_take_repaint() || lastBGColor != XPal[BGColor]) {
             /* Whole panel, not just the picture area: the surround has to
              * be repainted too when the background colour changes or the
              * picture scale is switched. */
