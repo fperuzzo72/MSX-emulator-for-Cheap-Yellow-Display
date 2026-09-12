@@ -252,6 +252,8 @@ static bool connectToKeyboard() {
     return true;
 }
 
+static void bleServiceTask(void *arg);
+
 void ble_keyboard_init() {
     NimBLEDevice::init("FNK0103-MSX");
     NimBLEDevice::setSecurityAuth(true, false, true); /* bond, no MITM, secure connections */
@@ -265,14 +267,24 @@ void ble_keyboard_init() {
     scan->setWindow(15);
     scan->setActiveScan(true);
     scan->start(0, false, true); /* scan until a HID device turns up */
+
+    /* Core 0, low priority: the machine owns core 1 and must not be made
+     * responsible for keeping the keyboard alive. */
+    xTaskCreatePinnedToCore(bleServiceTask, "blesvc", 4096, NULL, 2, NULL, 0);
     Serial.println("BLE: scanning for a keyboard");
 }
 
 int ble_keyboard_connected() { return sConnected ? 1 : 0; }
 
 void ble_keyboard_poll() {
-    /* The connect handshake runs here, on the emulation task, rather than
-     * inside the scan callback on the NimBLE host task. */
+    /* The connect handshake must not run inside the scan callback, which
+     * is the NimBLE host task, so it runs here - and this is called from
+     * a service task of our own rather than from the machine.
+     *
+     * It used to be called from the MSX's per-frame Keyboard() hook, and
+     * that is why the keyboard never connected on the Spectrum: nothing
+     * over there had any reason to know it was supposed to call this.
+     * Servicing the keyboard is the board's job, not the machine's. */
     if (sHaveTarget && !sConnected) {
         sHaveTarget = false;
         if (!connectToKeyboard()) NimBLEDevice::getScan()->start(0, false, true);
@@ -284,4 +296,12 @@ void ble_keyboard_poll() {
     portEXIT_CRITICAL(&sReportMux);
 
     machine_hid_report(report);
+}
+
+static void bleServiceTask(void *arg) {
+    (void)arg;
+    for (;;) {
+        ble_keyboard_poll();
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
 }

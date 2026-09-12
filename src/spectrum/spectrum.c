@@ -22,6 +22,7 @@
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 
+#include "z80_names.h"
 #include "Z80.h"
 #include "machine.h"
 #include "display.h"

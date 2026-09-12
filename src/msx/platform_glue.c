@@ -48,7 +48,8 @@ void Keyboard(void) {
     MSXMemoryClaimed = 1;
     MSXFrames++;
 
-    ble_keyboard_poll();
+    /* The keyboard services itself on its own task now; this hook only
+     * turns the latest report into this machine's key matrix. */
     msx_keys_frame();
 
     /* Hand the core back for a tick, once per frame. The emulation task
