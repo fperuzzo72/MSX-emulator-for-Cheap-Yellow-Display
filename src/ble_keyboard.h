@@ -31,6 +31,13 @@ void ble_keyboard_poll(void);
 /* Non-zero once a keyboard is connected and reporting. */
 int ble_keyboard_connected(void);
 
+/* Diagnostics: how many HID notifications have arrived, and a switch that
+ * dumps each one as hex on the serial console. A keyboard that connects
+ * and types nothing is indistinguishable from one whose reports are being
+ * discarded until you look at the bytes. */
+unsigned long ble_keyboard_report_count(void);
+void ble_keyboard_log_reports(int on);
+
 #ifdef __cplusplus
 }
 #endif

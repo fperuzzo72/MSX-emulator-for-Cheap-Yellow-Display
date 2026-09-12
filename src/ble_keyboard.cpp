@@ -33,11 +33,38 @@ static volatile bool sConnected  = false;
 static portMUX_TYPE sReportMux = portMUX_INITIALIZER_UNLOCKED;
 static uint8_t sReport[8] = {0};
 
+/* Diagnostics. A keyboard that pairs and then types nothing looks exactly
+ * like a keyboard that pairs and sends reports we throw away, and the only
+ * way to tell is to look at the bytes. `k 1` on the serial console turns
+ * the dump on. */
+static volatile uint32_t sNotifyCount = 0;
+static volatile uint8_t  sLastLen = 0;
+static volatile bool     sLogReports = false;
+
+void ble_keyboard_log_reports(int on) { sLogReports = on ? true : false; }
+unsigned long ble_keyboard_report_count(void) { return (unsigned long)sNotifyCount; }
+
 static void notifyCB(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len, bool isNotify) {
-    (void)chr; (void)isNotify;
-    if (len < 8) return; /* not a boot-protocol-shaped report */
+    (void)isNotify;
+    sNotifyCount++;
+    sLastLen = (uint8_t)len;
+
+    if (sLogReports) {
+        Serial.printf("HID %s len %u:", chr->getUUID().toString().c_str(), (unsigned)len);
+        for (size_t i = 0; i < len && i < 16; i++) Serial.printf(" %02X", data[i]);
+        Serial.println();
+    }
+
+    /* A boot keyboard report is [modifiers, reserved, key1..key6]. Some
+     * keyboards notify a 9-byte report whose first byte is the HID Report
+     * ID; the rest is the same eight bytes. Anything shorter is some other
+     * report (consumer keys, a mouse) and is not ours. */
+    const uint8_t *p = data;
+    if (len == 9) { p = data + 1; len = 8; }
+    if (len < 8) return;
+
     portENTER_CRITICAL(&sReportMux);
-    memcpy(sReport, data, 8);
+    memcpy(sReport, p, 8);
     portEXIT_CRITICAL(&sReportMux);
 }
 
@@ -114,24 +141,43 @@ static bool connectToKeyboard() {
     NimBLERemoteCharacteristic *proto = hid->getCharacteristic(HID_PROTOCOL_MODE_UUID);
     if (proto && proto->canWrite()) {
         uint8_t bootMode = 0x00;
-        proto->writeValue(&bootMode, 1, true);
+        bool ok = proto->writeValue(&bootMode, 1, true);
+        Serial.printf("BLE: asked for boot protocol: %s\n", ok ? "accepted" : "refused");
+    } else {
+        Serial.println("BLE: no writable Protocol Mode, device stays in report protocol");
     }
 
-    bool subscribed = false;
+    /* Subscribe to the boot report AND to every generic report
+     * characteristic, not one or the other.
+     *
+     * This is what stopped a paired keyboard from typing: plenty of
+     * keyboards expose the Boot Keyboard Input Report and then never
+     * notify on it, because they stay in Report Protocol mode and send
+     * everything on 0x2A4D. The Protocol Mode write above is only a
+     * request, and a device is free to ignore it or not expose it as
+     * writable at all. Subscribing to the boot report alone therefore
+     * gives a connection that is up, subscribed, and permanently silent.
+     * Listening to both costs nothing: notifyCB keeps whatever is shaped
+     * like a keyboard report and ignores the rest. */
+    int subCount = 0;
     NimBLERemoteCharacteristic *bootKbd = hid->getCharacteristic(HID_BOOT_KBD_INPUT_UUID);
-    if (bootKbd && bootKbd->canNotify()) subscribed = bootKbd->subscribe(true, notifyCB);
+    if (bootKbd && bootKbd->canNotify() && bootKbd->subscribe(true, notifyCB)) {
+        subCount++;
+        Serial.println("BLE: subscribed to the boot keyboard report (0x2A22)");
+    }
 
-    if (!subscribed) {
-        /* Some keyboards only expose the generic Report characteristic,
-         * sometimes several of them. Subscribe to all; notifyCB ignores
-         * anything that is not shaped like an 8-byte boot report. */
-        const std::vector<NimBLERemoteCharacteristic *> &chars = hid->getCharacteristics(true);
-        for (auto c : chars) {
-            if (c->getUUID() == NimBLEUUID(HID_REPORT_DATA_UUID) && c->canNotify()) {
-                if (c->subscribe(true, notifyCB)) subscribed = true;
+    const std::vector<NimBLERemoteCharacteristic *> &chars = hid->getCharacteristics(true);
+    for (auto c : chars) {
+        if (c->getUUID() == NimBLEUUID(HID_REPORT_DATA_UUID) && c->canNotify()) {
+            if (c->subscribe(true, notifyCB)) {
+                subCount++;
+                Serial.printf("BLE: subscribed to a report characteristic (0x2A4D, handle %u)\n",
+                              (unsigned)c->getHandle());
             }
         }
     }
+    Serial.printf("BLE: %d notifying characteristic(s) subscribed\n", subCount);
+    bool subscribed = subCount > 0;
 
     if (!subscribed) {
         Serial.println("BLE: no report characteristic to subscribe to, dropping");

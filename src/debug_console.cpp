@@ -115,6 +115,14 @@ static void handleLine(char *line) {
                           "4 white block via TFT_eSPI, 5 same block via the emulator's path)\n", which);
             break;
         }
+        case 'k': {
+            int on = 1;
+            sscanf(line + 1, "%d", &on);
+            ble_keyboard_log_reports(on);
+            Serial.printf("HID report dump %s, %lu report(s) received so far\n",
+                          on ? "on" : "off", ble_keyboard_report_count());
+            break;
+        }
         case 'z': {
             int scale = 0;
             if (sscanf(line + 1, "%d", &scale) != 1 || (scale != 1 && scale != 2))
@@ -145,11 +153,12 @@ static void handleLine(char *line) {
                           msx_free_heap(),
                           ble_keyboard_connected() ? "connected" : "not connected",
                           fps, msx_keys_typing(), msx_keys_pending_accent());
+            Serial.printf("HID reports received: %lu\n", ble_keyboard_report_count());
             break;
         }
         case '?':
         default:
-            Serial.println("s=screen  t <text>=type  d=dead-key probe  g <code>=glyph  z [1|2]=picture scale  x <n>=test pattern  w <0|1>=byte swap  h=status");
+            Serial.println("s=screen  t <text>=type  d=dead-key probe  g <code>=glyph  k [0|1]=dump HID reports  z [1|2]=picture scale  x <n>=test pattern  w <0|1>=byte swap  h=status");
             break;
     }
 }
