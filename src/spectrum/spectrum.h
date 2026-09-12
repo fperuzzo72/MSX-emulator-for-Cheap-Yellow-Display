@@ -2,6 +2,10 @@
 #define SPECTRUM_H
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* ZX Spectrum 48K.
  *
  *   0x0000-0x3FFF  16kB ROM, executed straight out of flash
@@ -31,11 +35,21 @@
  * centres, with the border filling what is left. */
 #define SPEC_PICTURE_TOP 12
 
+/* The keyword crib in the panel margins, toggled with F1. */
+void spectrum_help_toggle(void);
+int  spectrum_help_active(void);
+void spectrum_help_draw(void);
+void spectrum_help_invalidate(void);
+
 void spectrum_keys_reset(void);
 void spectrum_keys_hid(const uint8_t report[8]);
 uint8_t spectrum_keys_read(uint8_t highAddr);
 int  spectrum_keys_type(const char *text);
 int  spectrum_keys_typing(void);
 void spectrum_keys_frame(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

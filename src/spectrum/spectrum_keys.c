@@ -126,6 +126,17 @@ static void rebuild(void) {
 }
 
 void spectrum_keys_hid(const uint8_t report[8]) {
+    int i, j;
+
+    /* F1 is not a Spectrum key, so it is free for the keyword crib.
+     * Acted on at its down edge only, or holding it would flicker. */
+    for (i = 2; i < 8; i++) {
+        if (report[i] != 0x3A) continue;
+        for (j = 2; j < 8; j++) if (sHeld[j - 2] == 0x3A) break;
+        if (j >= 8) spectrum_help_toggle();
+        break;
+    }
+
     sMods = report[0];
     memcpy(sHeld, report + 2, 6);
 }

@@ -23,6 +23,45 @@ static const uint16_t COL_ROW    = 0x1082;   /* a very dark blue-grey */
 #define ROW_TOP    56
 #define ROW_HEIGHT 30
 
+/* The picture-scale button, below the list. */
+#define BTN_X      16
+#define BTN_W      200
+#define BTN_H      34
+
+/* The picture scale is remembered here rather than compiled in, so the
+ * board comes back up the way it was left. It is applied even when the
+ * menu is skipped for having nothing to choose. */
+static int loadScale(void) {
+    Preferences prefs;
+    int v = 2;
+    if (prefs.begin("cyd", true)) {
+        v = prefs.getInt("scale", 2);
+        prefs.end();
+    }
+    return (v == 1) ? 1 : 2;
+}
+
+static void saveScale(int v) {
+    Preferences prefs;
+    if (!prefs.begin("cyd", false)) return;
+    prefs.putInt("scale", v);
+    prefs.end();
+}
+
+static int btnY(void) { return ROW_TOP + sCount * ROW_HEIGHT + 14; }
+
+static void drawScaleButton(TFT_eSPI &tft) {
+    int y = btnY();
+    int scale = display_get_scale();
+    tft.fillRoundRect(BTN_X, y, BTN_W, BTN_H, 5, COL_ROW);
+    tft.drawRoundRect(BTN_X, y, BTN_W, BTN_H, 5, COL_TITLE);
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(COL_TEXT, COL_ROW);
+    tft.drawString(scale == 1 ? "picture  1:1  (small, crisp)"
+                              : "picture  1.5x  (fills the screen)",
+                   BTN_X + 10, y + 9, 2);
+}
+
 static void buildEntries(void) {
     sCount = 0;
     for (int m = 0; m < machine_count && sCount < MENU_MAX; m++) {
@@ -67,6 +106,7 @@ static void drawMenu(TFT_eSPI &tft, int current, int secondsLeft) {
     tft.drawString("Choose a machine", 16, 16, 4);
 
     for (int i = 0; i < sCount; i++) drawRow(tft, i, i == current);
+    drawScaleButton(tft);
 
     tft.fillRect(0, DISPLAY_PANEL_H - 30, DISPLAY_PANEL_W, 30, COL_BG);
     tft.setTextColor(COL_TITLE, COL_BG);
@@ -79,6 +119,10 @@ void boot_menu_run(void) {
     TFT_eSPI &tft = panel_tft();
 
     buildEntries();
+
+    /* Whatever scale this board was left at, whether or not there is a
+     * menu to show. */
+    display_set_scale(loadScale());
 
     /* Nothing to choose between: don't make anyone look at a menu. */
     if (sCount <= 1) return;
@@ -102,6 +146,19 @@ void boot_menu_run(void) {
     while ((int32_t)(deadline - millis()) > 0) {
         uint16_t tx, ty;
         if (tft.getTouch(&tx, &ty)) {
+            /* The scale button first: it changes a setting rather than
+             * making a choice, so it must not also start the machine. */
+            if ((int)ty >= btnY() && (int)ty < btnY() + BTN_H &&
+                (int)tx >= BTN_X && (int)tx < BTN_X + BTN_W) {
+                int next = display_get_scale() == 1 ? 2 : 1;
+                display_set_scale(next);
+                saveScale(next);
+                drawScaleButton(tft);
+                deadline = millis() + 60UL * 1000;   /* stop hurrying them */
+                delay(200);                          /* one tap, one change */
+                continue;
+            }
+
             int i = ((int)ty - ROW_TOP) / ROW_HEIGHT;
             if (i >= 0 && i < sCount) {
                 current = i;

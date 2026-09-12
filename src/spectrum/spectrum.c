@@ -205,7 +205,8 @@ static void runFrame(void) {
     int y;
 
     display_service();
-    if (display_take_repaint()) { sLastBorder = 0xFF; markAll(); }
+    if (display_take_repaint()) { sLastBorder = 0xFF; markAll(); spectrum_help_invalidate(); }
+    spectrum_help_draw();
 
     /* Border above the picture, then the picture, then the border below.
      * The border colour can change mid-frame on real hardware; this draws
