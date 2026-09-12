@@ -36,6 +36,7 @@
 #include <string.h>
 #include "msx_keys.h"
 #include "msx_bridge.h"
+#include "selector.h"
 
 /* ---------------------------------------------------------------- */
 /* The Hotbit matrix, rows 0-5 (the printable half).                 */
@@ -354,6 +355,17 @@ static unsigned char sConsumed[6];   /* HID codes already dealt with on their
 static unsigned char sPendingAccent;
 
 void msx_keys_set_report(const uint8_t report[8]) {
+    int i, j;
+
+    /* F12 is not an MSX key, so it is free to open the selector. Acted on
+     * at its down edge only. */
+    for (i = 2; i < 8; i++) {
+        if (report[i] != 0x45) continue;
+        for (j = 2; j < 8; j++) if (sReport[j] == 0x45) break;
+        if (j >= 8) selector_open();
+        break;
+    }
+
     memcpy((void *)sReport, report, 8);
 }
 

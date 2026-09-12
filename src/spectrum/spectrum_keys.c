@@ -14,6 +14,7 @@
  */
 #include <string.h>
 #include "spectrum.h"
+#include "selector.h"
 
 /* Half-rows, in the order the address lines select them. */
 enum {
@@ -131,9 +132,10 @@ void spectrum_keys_hid(const uint8_t report[8]) {
     /* F1 is not a Spectrum key, so it is free for the keyword crib.
      * Acted on at its down edge only, or holding it would flicker. */
     for (i = 2; i < 8; i++) {
-        if (report[i] != 0x3A) continue;
-        for (j = 2; j < 8; j++) if (sHeld[j - 2] == 0x3A) break;
-        if (j >= 8) spectrum_help_toggle();
+        uint8_t k = report[i];
+        if (k != 0x3A && k != 0x45) continue;     /* F1, F12 */
+        for (j = 2; j < 8; j++) if (sHeld[j - 2] == k) break;
+        if (j >= 8) { if (k == 0x3A) spectrum_help_toggle(); else selector_open(); }
         break;
     }
 

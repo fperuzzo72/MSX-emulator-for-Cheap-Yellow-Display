@@ -11,6 +11,7 @@
 #include "msx_bridge.h"
 #include "msx_keys.h"
 #include "msx_carts.h"
+#include "selector.h"
 
 static int  m_prealloc(void)      { return msx_video_prealloc(); }
 static void m_run(void)           { msx_keys_init(); msx_run(); }
@@ -45,6 +46,15 @@ static const char *m_entry_name(int i) {
 }
 
 static void m_select_entry(int i) { msx_cart_select(i <= 0 ? -1 : i - 1); }
+
+/* Inserting a cartridge on a real MSX means turning it off, swapping the
+ * cartridge and turning it on again. Here it is the same thing without
+ * the board rebooting: the core reloads the slot and resets the machine
+ * around it. */
+static void m_switch_to(int i) {
+    msx_cart_select(i <= 0 ? -1 : i - 1);
+    msx_insert_cartridge();
+}
 static int  m_selected_entry(void) { return msx_cart_selected() + 1; }
 
 /* Commands that only make sense here: the dead-key probe and the raw
@@ -93,6 +103,6 @@ const Machine msx_machine = {
     m_hid, m_type, m_typing,
     m_screen_row, m_screen_mode, m_char_pattern, m_peek,
     m_set_sound, m_sound_on,
-    m_entry_count, m_entry_name, m_select_entry, m_selected_entry,
+    m_entry_count, m_entry_name, m_select_entry, m_selected_entry, m_switch_to,
     m_debug_command, m_debug_help,
 };

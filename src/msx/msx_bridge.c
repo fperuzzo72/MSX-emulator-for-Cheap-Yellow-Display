@@ -133,6 +133,13 @@ extern int MSXSoundOn; /* platform_glue.c */
 
 void msx_reboot(void) { esp_restart(); }
 
+void msx_insert_cartridge(void) {
+    /* LoadCart() ends by calling ResetMSX(), so this is the whole of it.
+     * MAP_GUESS lets the core work out the mapper, which matters: a 128kB
+     * Konami cartridge is not a 32kB one with more pages. */
+    LoadCart(gameRomPath(), 0, MAP_GUESS);
+}
+
 void msx_set_sound(int on) { MSXSoundOn = on ? 1 : 0; }
 int  msx_sound_on(void)    { return MSXSoundOn; }
 

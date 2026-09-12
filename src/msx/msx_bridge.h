@@ -62,6 +62,11 @@ int msx_type_char(unsigned char code);
 /* Restart the board, so a new cartridge selection takes effect. */
 void msx_reboot(void);
 
+/* Put whichever cartridge is selected into slot 0 and reset the machine
+ * around it, the way turning it off and on with a different cartridge
+ * would. The board keeps running. */
+void msx_insert_cartridge(void);
+
 /* Sound on or off at runtime. Off gives back about a quarter of the frame
  * rate; see docs/DISPLAY.md on why speed is scarce here. */
 void msx_set_sound(int on);

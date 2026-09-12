@@ -58,6 +58,11 @@ typedef struct Machine {
     void        (*select_entry)(int i);
     int         (*selected_entry)(void);
 
+    /* Swap to another entry while running, without rebooting the board:
+     * insert a different cartridge, put in a different tape. Resets the
+     * emulated machine, which is what inserting either would do. */
+    void        (*switch_to)(int entry);
+
     /* --- console commands only this machine has ------------------------ */
     int         (*debug_command)(const char *line);
     const char *(*debug_help)(void);

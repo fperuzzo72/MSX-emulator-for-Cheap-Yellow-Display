@@ -27,10 +27,16 @@
 #include "machine.h"
 #include "display.h"
 #include "spectrum.h"
+#include "selector.h"
 
 #ifdef HAVE_SPECTRUM_ROM
 extern const unsigned char spectrum_rom[SPEC_ROM_SIZE];
 #endif
+
+/* Used before they are defined: the frame loop can swap what is running,
+ * and swapping restores a snapshot. */
+static int  loadSnapshot(void);
+static void m_switch_to(int entry);
 
 /* ---------------------------------------------------------------- */
 /* Machine state                                                      */
@@ -211,6 +217,21 @@ static void runFrame(void) {
     int y;
 
     display_service();
+
+    /* The selector owns the panel and the machine stands still under it. */
+    if (selector_active()) {
+        int chosen = selector_frame();
+        if (!selector_active()) {
+            sLastBorder = 0xFF;
+            markAll();
+            spectrum_help_invalidate();
+            display_fill_panel(0);
+            if (chosen >= 0) m_switch_to(chosen);
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+        return;
+    }
+
     if (display_take_repaint()) { sLastBorder = 0xFF; markAll(); spectrum_help_invalidate(); }
     spectrum_help_draw();
 
@@ -289,6 +310,7 @@ static int m_prealloc(void) {
     return sBand != 0;
 }
 
+
 /* Restore a .sna over the running machine.
  *
  * The format is 27 bytes of registers then the whole 48kB of RAM. What
@@ -359,7 +381,7 @@ static void m_run(void) {
         /* Not yet: the ROM has its own startup to get through, and this
          * one sits on a copyright screen until a key is pressed. Typing
          * into it before the cursor exists just loses the keystrokes. */
-        sAutoloadAt = 150;      /* three seconds of emulated time */
+        sAutoloadAt = sFrames + 150;   /* three seconds of emulated time */
     }
 
     sReady = 1;
@@ -464,6 +486,23 @@ static void m_select_entry(int i) {
     spectrum_tape_select(i > snaps ? i - 1 - snaps : -1);
 }
 
+/* Putting in another tape means starting the machine again with it, the
+ * way you would have: reset, clear the RAM, rewind, and type LOAD "" when
+ * the ROM is ready for it. */
+static void m_switch_to(int i) {
+    m_select_entry(i);
+    memset(sRAM, 0, SPEC_RAM_SIZE);
+    ResetZ80(&sCPU);
+    sCPU.IPeriod = SPEC_FRAME_TSTATES;
+    sCPU.IAutoReset = 1;
+    sBorder = 7;
+    sLastBorder = 0xFF;
+    markAll();
+    spectrum_help_invalidate();
+    if (!loadSnapshot() && spectrum_tape_begin(spectrum_rom))
+        sAutoloadAt = sFrames + 150;
+}
+
 static int m_selected_entry(void) {
     int snaps = spectrum_snapshot_count();
     if (spectrum_snapshot_selected() >= 0) return spectrum_snapshot_selected() + 1;
@@ -477,6 +516,6 @@ const Machine spectrum_machine = {
     m_hid, m_type, m_typing,
     m_screen_row, m_screen_mode, m_char_pattern, m_peek,
     m_set_sound, m_sound_on,
-    m_entry_count, m_entry_name, m_select_entry, m_selected_entry,
+    m_entry_count, m_entry_name, m_select_entry, m_selected_entry, m_switch_to,
     m_debug_command, m_debug_help,
 };

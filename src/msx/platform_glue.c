@@ -17,6 +17,8 @@
 #include "Sound.h"
 #include "ble_keyboard.h"
 #include "msx_keys.h"
+#include "selector.h"
+#include "machine.h"
 #include "msx_display.h"
 
 /* fMSX/MSX.c (LoadFile(), CMOS handling) references this extern global;
@@ -51,6 +53,19 @@ void Keyboard(void) {
     /* The keyboard services itself on its own task now; this hook only
      * turns the latest report into this machine's key matrix. */
     msx_keys_frame();
+
+    /* While the selector is open the machine stands still. Blocking here
+     * is the pause: this hook is called once a frame, so not returning
+     * from it is exactly "the machine is not running". */
+    if (selector_active()) {
+        int chosen = -1;
+        while (selector_active()) {
+            int e = selector_frame();
+            if (e >= 0) chosen = e;
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+        if (chosen >= 0) machine->switch_to(chosen);
+    }
 
     /* Hand the core back for a tick, once per frame. The emulation task
      * and the video task both sit at priority 5 on core 1 and neither

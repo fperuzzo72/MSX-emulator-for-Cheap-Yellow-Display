@@ -26,6 +26,7 @@
 #include "ble_keyboard.h"
 #include "sd_mount.h"
 #include "machine.h"
+#include "selector.h"
 #include <esp_system.h>
 
 extern "C" {
@@ -206,6 +207,11 @@ static void handleLine(char *line) {
             break;
         }
 
+        case 'o':
+            selector_open();
+            Serial.println("selector open on the panel - tap a row, or anywhere else to cancel");
+            break;
+
         case 'e': {
             /* Same choice the boot menu offers, for when there is a cable
              * in hand and no finger on the glass. */
@@ -264,7 +270,7 @@ static void handleLine(char *line) {
             Serial.println("s=screen  t <text>=type (\\n = Return)  g <code>=glyph  r <addr> [n]=peek");
             Serial.println("z [1|2]=scale  x <n>=test pattern  w <0|1>=byte swap");
             Serial.println("n <0|1>=sound  a [hz] [ms]=test tone  b <0|1>=BLE scan  k <0|1>=HID dump");
-            Serial.println("m <0|1>=SD card  e [machine entry]=choose what boots  h=status");
+            Serial.println("m <0|1>=SD card  e [machine entry]=boot choice  o=selector  h=status");
             if (machine->debug_help()[0]) Serial.println(machine->debug_help());
             break;
     }
