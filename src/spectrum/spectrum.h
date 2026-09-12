@@ -35,6 +35,19 @@ extern "C" {
  * centres, with the border filling what is left. */
 #define SPEC_PICTURE_TOP 12
 
+/* A .sna snapshot: 27 bytes of registers then 48kB of RAM from 0x4000.
+ * The format keeps the program counter on the stack, so restoring it is
+ * the last thing the loader does. */
+#define SNA_HEADER   27
+#define SNA_SIZE     (SNA_HEADER + 49152)
+
+/* Snapshots built into this firmware, the Spectrum's answer to the MSX's
+ * cartridges. Nothing here is distributed with the project. */
+int         spectrum_snapshot_count(void);
+const char *spectrum_snapshot_name(int i);
+int         spectrum_snapshot_selected(void);
+void        spectrum_snapshot_select(int i);
+
 /* The keyword crib in the panel margins, toggled with F1. */
 void spectrum_help_toggle(void);
 int  spectrum_help_active(void);

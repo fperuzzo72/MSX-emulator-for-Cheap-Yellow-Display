@@ -26,6 +26,7 @@
 #include "ble_keyboard.h"
 #include "sd_mount.h"
 #include "machine.h"
+#include <esp_system.h>
 
 extern "C" {
 void display_request_test_pattern(int which);
@@ -205,6 +206,27 @@ static void handleLine(char *line) {
             break;
         }
 
+        case 'e': {
+            /* Same choice the boot menu offers, for when there is a cable
+             * in hand and no finger on the glass. */
+            int mi = -1, en = 0;
+            if (sscanf(line + 1, "%d %d", &mi, &en) >= 1 && mi >= 0) {
+                machine_choose(mi, en);
+                Serial.printf("chose %s / %s - rebooting\n",
+                              machine->name, machine->entry_name(en));
+                delay(100);
+                esp_restart();
+            }
+            for (int m = 0; m < machine_count; m++) {
+                for (int i = 0; i < machine_list[m]->entry_count(); i++)
+                    Serial.printf(" %c e %d %d   %s / %s\n",
+                                  (machine_list[m] == machine &&
+                                   i == machine->selected_entry()) ? '*' : ' ',
+                                  m, i, machine_list[m]->name,
+                                  machine_list[m]->entry_name(i));
+            }
+            break;
+        }
         case 'h': {
             static unsigned long lastFrames = 0, lastFramesBlit = 0;
             static unsigned long lastMs = 0;
@@ -242,7 +264,7 @@ static void handleLine(char *line) {
             Serial.println("s=screen  t <text>=type (\\n = Return)  g <code>=glyph  r <addr> [n]=peek");
             Serial.println("z [1|2]=scale  x <n>=test pattern  w <0|1>=byte swap");
             Serial.println("n <0|1>=sound  a [hz] [ms]=test tone  b <0|1>=BLE scan  k <0|1>=HID dump");
-            Serial.println("m <0|1>=SD card  h=status");
+            Serial.println("m <0|1>=SD card  e [machine entry]=choose what boots  h=status");
             if (machine->debug_help()[0]) Serial.println(machine->debug_help());
             break;
     }

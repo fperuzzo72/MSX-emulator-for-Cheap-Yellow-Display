@@ -37,3 +37,10 @@ if os.path.isfile(spectrum_c):
     print("Spectrum ROM: %s found, embedding it" % os.path.relpath(spectrum_c))
 else:
     print("Spectrum ROM: none. That firmware will say so and stop.")
+
+snaps_c = os.path.join(env.subst("$PROJECT_SRC_DIR"), "spectrum", "spectrum_snap_data.c")
+if os.path.isfile(snaps_c):
+    env.Append(CPPDEFINES=["HAVE_SPECTRUM_SNAPS"])
+    print("Spectrum snapshots: %s found, embedding them" % os.path.relpath(snaps_c))
+else:
+    print("Spectrum snapshots: none")

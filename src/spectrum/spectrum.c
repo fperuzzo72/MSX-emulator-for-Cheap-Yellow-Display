@@ -278,6 +278,48 @@ static int m_prealloc(void) {
     return sBand != 0;
 }
 
+/* Restore a .sna over the running machine.
+ *
+ * The format is 27 bytes of registers then the whole 48kB of RAM. What
+ * catches people out is the program counter: it is not in the header at
+ * all, it is on the stack, so the last act of loading is to pop it. */
+extern const unsigned char *spectrum_snapshot_image(void);
+
+static int loadSnapshot(void) {
+    const unsigned char *sna = spectrum_snapshot_image();
+    word sp;
+
+    if (!sna) return 0;
+
+    memcpy(sRAM, sna + SNA_HEADER, SPEC_RAM_SIZE);
+
+    sCPU.I          = sna[0];
+    sCPU.HL1.W      = (word)(sna[1]  | (sna[2]  << 8));
+    sCPU.DE1.W      = (word)(sna[3]  | (sna[4]  << 8));
+    sCPU.BC1.W      = (word)(sna[5]  | (sna[6]  << 8));
+    sCPU.AF1.W      = (word)(sna[7]  | (sna[8]  << 8));
+    sCPU.HL.W       = (word)(sna[9]  | (sna[10] << 8));
+    sCPU.DE.W       = (word)(sna[11] | (sna[12] << 8));
+    sCPU.BC.W       = (word)(sna[13] | (sna[14] << 8));
+    sCPU.IY.W       = (word)(sna[15] | (sna[16] << 8));
+    sCPU.IX.W       = (word)(sna[17] | (sna[18] << 8));
+    sCPU.IFF        = (byte)((sna[19] & 0x04) ? (IFF_1 | IFF_2) : 0);
+    sCPU.R          = sna[20];
+    sCPU.AF.W       = (word)(sna[21] | (sna[22] << 8));
+    sp              = (word)(sna[23] | (sna[24] << 8));
+    if (sna[25] == 1)      sCPU.IFF |= IFF_IM1;
+    else if (sna[25] == 2) sCPU.IFF |= IFF_IM2;
+    sBorder = (uint8_t)(sna[26] & 7);
+
+    /* Pop the program counter the snapshot left on its own stack. */
+    sCPU.PC.W = (word)(RdZ80(sp) | (RdZ80((word)(sp + 1)) << 8));
+    sCPU.SP.W = (word)(sp + 2);
+
+    markAll();
+    sLastBorder = 0xFF;
+    return 1;
+}
+
 static void m_run(void) {
 #ifndef HAVE_SPECTRUM_ROM
     printf("spectrum: no ROM built in. See src/spectrum/spectrum.h - supply a\n"
@@ -299,6 +341,10 @@ static void m_run(void) {
     sCPU.IAutoReset = 1;
 
     markAll();
+
+    if (loadSnapshot())
+        printf("spectrum: started from a snapshot\n");
+
     sReady = 1;
     for (;;) runFrame();
 #endif
@@ -372,12 +418,15 @@ static int  m_sound_on(void)    { return sSoundOn; }
 static const char *m_debug_help(void) { return ""; }
 static int m_debug_command(const char *line) { (void)line; return 0; }
 
-/* Only one thing to boot into so far. Snapshots built into the firmware
- * would appear here, the same way the MSX's cartridges do. */
-static int         m_entry_count(void)    { return 1; }
-static const char *m_entry_name(int i)    { (void)i; return "Spectrum BASIC"; }
-static void        m_select_entry(int i)  { (void)i; }
-static int         m_selected_entry(void) { return 0; }
+/* Entry 0 is the machine on its own; the rest are snapshots in flash. */
+static int m_entry_count(void) { return 1 + spectrum_snapshot_count(); }
+
+static const char *m_entry_name(int i) {
+    return i <= 0 ? "Spectrum BASIC" : spectrum_snapshot_name(i - 1);
+}
+
+static void m_select_entry(int i)  { spectrum_snapshot_select(i <= 0 ? -1 : i - 1); }
+static int  m_selected_entry(void) { return spectrum_snapshot_selected() + 1; }
 
 const Machine spectrum_machine = {
     "ZX Spectrum 48K",
