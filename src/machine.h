@@ -9,73 +9,68 @@ extern "C" {
 /* What a machine has to provide to the board.
  *
  * Everything under src/device/ is the CYD: the panel, the amplifier, the
- * BLE keyboard, the card, the serial console. It knows nothing about MSX
- * or Spectrum. Everything under src/msx/ and src/spectrum/ is a machine,
- * and knows nothing about this board. This header is the only thing that
- * crosses, and it is deliberately small.
+ * BLE keyboard, the card, the serial console, the boot menu. It knows
+ * nothing about MSX or Spectrum. Everything under src/msx/ and
+ * src/spectrum/ is a machine, and knows nothing about this board.
  *
- * Two firmwares are built from this tree, one per machine; platformio.ini
- * picks which machine directory goes into the build. */
+ * A table of function pointers rather than a set of link-time symbols,
+ * because one firmware carries both machines and picks at boot. The cost
+ * is one indirection on calls that happen at most once a frame; nothing
+ * in an inner loop goes through here. */
 
-/* Name for the boot banner, e.g. "MSX1 (Hotbit HB-8000)". */
-const char *machine_name(void);
+typedef struct Machine {
+    /* For the boot menu and the banner, e.g. "MSX1 (Hotbit HB-8000)". */
+    const char *name;
 
-/* Claim the framebuffer before anything else fragments the one big DRAM
- * region this chip has. Called before machine_run(). */
-int machine_prealloc_video(void);
+    /* Claim the framebuffer before anything else fragments the one big
+     * DRAM region this chip has. Called before run(). */
+    int (*prealloc_video)(void);
 
-/* Bring the machine up and run it. Never returns. */
-void machine_run(void);
+    /* Bring the machine up and run it. Never returns. */
+    void (*run)(void);
 
-/* Non-zero once the machine has claimed all the memory it needs, so the
- * BLE stack knows when it is safe to allocate. */
-int machine_ready(void);
+    /* Non-zero once it has claimed all the memory it needs, so the BLE
+     * stack knows when it is safe to allocate. */
+    int (*ready)(void);
 
-/* Frames drawn since power-on, for the frame-rate readout. */
-unsigned long machine_frames(void);
+    unsigned long (*frames)(void);
 
-/* --- keyboard ---------------------------------------------------- */
+    /* --- keyboard: the board carries the keys, the machine means them --- */
+    void (*hid_report)(const uint8_t report[8]);
+    int  (*type)(const char *text);   /* synthetic typing, for the console */
+    int  (*typing)(void);
 
-/* Hand over the latest 8-byte HID boot keyboard report. The machine
- * decides what those keys mean; the board only carries them. */
-void machine_hid_report(const uint8_t report[8]);
+    /* --- reading the machine back over the serial console -------------- */
+    int  (*screen_row)(int row, uint8_t *out, int max);
+    const char *(*screen_mode_name)(void);
+    int  (*char_pattern)(int code, uint8_t *rows8);
+    int  (*peek)(int addr);
 
-/* Type a string as if on the keyboard, for testing over the serial
- * console. Returns how many characters were accepted. */
-int machine_type(const char *text);
-int machine_typing(void);
+    /* --- sound --------------------------------------------------------- */
+    void (*set_sound)(int on);
+    int  (*sound_on)(void);
 
-/* --- reading the machine back ------------------------------------ */
+    /* --- what this machine can boot into -------------------------------
+     * Entry 0 is always the machine on its own - BASIC, an empty slot.
+     * The rest are whatever ROMs are built into this firmware. */
+    int         (*entry_count)(void);
+    const char *(*entry_name)(int i);
+    void        (*select_entry)(int i);
+    int         (*selected_entry)(void);
 
-/* Text-mode screen readback, so the firmware can be checked over the USB
- * cable rather than by looking at the panel. Returns columns written, or
- * 0 when the current mode has no character cells. */
-int machine_screen_row(int row, uint8_t *out, int max);
+    /* --- console commands only this machine has ------------------------ */
+    int         (*debug_command)(const char *line);
+    const char *(*debug_help)(void);
+} Machine;
 
-/* A one-line description of the current screen mode. */
-const char *machine_screen_mode_name(void);
+/* Every machine in this firmware, and the one that was chosen. */
+extern const Machine *const machine_list[];
+extern const int machine_count;
+extern const Machine *machine;
 
-/* The 8x8 bitmap for a character code, from wherever the machine keeps
- * its font. Returns 0 if it has none to show. */
-int machine_char_pattern(int code, uint8_t *rows8);
-
-/* Read a byte of the machine's memory. -1 when that address is not
- * readable RAM. */
-int machine_peek(int addr);
-
-/* --- sound ------------------------------------------------------- */
-void machine_set_sound(int on);
-int  machine_sound_on(void);
-
-/* --- machine-specific console commands --------------------------- */
-
-/* Handle a console line the generic console did not recognise. Returns
- * non-zero if the machine dealt with it. Lets a machine add its own
- * commands without the console growing to know about all of them. */
-int machine_debug_command(const char *line);
-
-/* What those commands are, for the help line. Empty string if none. */
-const char *machine_debug_help(void);
+/* Pick one, by index into machine_list. Remembered in NVS. */
+void machine_choose(int index, int entry);
+int  machine_chosen_index(void);
 
 #ifdef __cplusplus
 }

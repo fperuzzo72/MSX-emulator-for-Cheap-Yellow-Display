@@ -11,6 +11,7 @@
 #include "msx_display.h"
 
 #include "esp_heap_caps.h"
+#include "esp_system.h"
 
 int msx_video_prealloc(void) { return PreallocVideo(); }
 
@@ -129,6 +130,8 @@ int msx_type_char(unsigned char code) {
 int msx_caps_on(void) { return msxPeek(MSX_CAPST) != 0; }
 
 extern int MSXSoundOn; /* platform_glue.c */
+
+void msx_reboot(void) { esp_restart(); }
 
 void msx_set_sound(int on) { MSXSoundOn = on ? 1 : 0; }
 int  msx_sound_on(void)    { return MSXSoundOn; }

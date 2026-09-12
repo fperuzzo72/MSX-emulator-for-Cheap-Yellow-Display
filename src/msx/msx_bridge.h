@@ -59,6 +59,9 @@ int msx_screen_row(int row, uint8_t *out, int max);
  * expect to find them. */
 int msx_type_char(unsigned char code);
 
+/* Restart the board, so a new cartridge selection takes effect. */
+void msx_reboot(void);
+
 /* Sound on or off at runtime. Off gives back about a quarter of the frame
  * rate; see docs/DISPLAY.md on why speed is scarce here. */
 void msx_set_sound(int on);

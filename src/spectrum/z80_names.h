@@ -14,6 +14,13 @@
  * at run time - no dispatch, no indirection, each machine calls straight
  * into its own copy.
  */
+/* The Spectrum drives whole frames with ExecZ80 rather than running to a
+ * LoopZ80 callback. This has to be defined here rather than for the whole
+ * build: it also removes RunZ80 from Z80.h, and fMSX uses RunZ80. */
+#ifndef EXECZ80
+#define EXECZ80
+#endif
+
 #define RdZ80    spec_RdZ80
 #define WrZ80    spec_WrZ80
 #define InZ80    spec_InZ80

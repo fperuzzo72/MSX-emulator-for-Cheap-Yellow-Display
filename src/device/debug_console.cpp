@@ -2,7 +2,7 @@
  *
  * Board-level, not machine-level: it knows how to type into a machine and
  * read its screen back, but not what machine it is. Anything only one
- * machine can answer goes through machine_debug_command().
+ * machine can answer goes through machine->debug_command().
  *
  * Commands (one per line, 115200 8N1):
  *   s            dump the machine's text screen, non-ASCII as {XX}
@@ -66,9 +66,9 @@ static const char *charName(uint8_t c) {
 
 static void dumpScreen() {
     uint8_t row[64];
-    Serial.printf("%s\n", machine_screen_mode_name());
+    Serial.printf("%s\n", machine->screen_mode_name());
     for (int y = 0; y < 24; y++) {
-        int cols = machine_screen_row(y, row, sizeof(row));
+        int cols = machine->screen_row(y, row, sizeof(row));
         if (cols <= 0) { Serial.println("(not a text mode)"); return; }
         Serial.printf("%2d |", y);
         for (int x = 0; x < cols; x++) {
@@ -101,7 +101,7 @@ static void handleLine(char *line) {
                 else *w++ = *r++;
             }
             *w = 0;
-            Serial.printf("typing %d chars\n", machine_type(text));
+            Serial.printf("typing %d chars\n", machine->type(text));
             break;
         }
 
@@ -109,7 +109,7 @@ static void handleLine(char *line) {
             int code = 0;
             if (sscanf(line + 1, "%i", &code) == 1) {
                 uint8_t rows[8];
-                if (!machine_char_pattern(code, rows)) { Serial.println("no pattern table"); break; }
+                if (!machine->char_pattern(code, rows)) { Serial.println("no pattern table"); break; }
                 Serial.printf("char 0x%02X:\n", code);
                 for (int y = 0; y < 8; y++) {
                     char out[10];
@@ -127,7 +127,7 @@ static void handleLine(char *line) {
                 if (len < 1) len = 1;
                 if (len > 64) len = 64;
                 Serial.printf("%04X:", addr);
-                for (int i = 0; i < len; i++) Serial.printf(" %02X", machine_peek(addr + i));
+                for (int i = 0; i < len; i++) Serial.printf(" %02X", machine->peek(addr + i));
                 Serial.println();
             }
             break;
@@ -163,7 +163,7 @@ static void handleLine(char *line) {
         case 'n': {
             int on = 1;
             sscanf(line + 1, "%d", &on);
-            machine_set_sound(on);
+            machine->set_sound(on);
             Serial.printf("sound %s\n", on ? "on" : "off");
             break;
         }
@@ -208,7 +208,7 @@ static void handleLine(char *line) {
         case 'h': {
             static unsigned long lastFrames = 0, lastFramesBlit = 0;
             static unsigned long lastMs = 0;
-            unsigned long frames = machine_frames();
+            unsigned long frames = machine->frames();
             unsigned long now = millis();
             float fps = (lastMs && now > lastMs)
                         ? (frames - lastFrames) * 1000.0f / (now - lastMs) : 0.0f;
@@ -217,12 +217,12 @@ static void handleLine(char *line) {
             lastFrames = frames; lastMs = now;
 
             Serial.printf("%s: free heap %u, keyboard %s, %.1f fps, typing %d\n",
-                          machine_name(), board_free_heap(),
+                          machine->name, board_free_heap(),
                           ble_keyboard_connected() ? "connected" : "not connected",
-                          fps, machine_typing());
+                          fps, machine->typing());
             Serial.printf("HID reports received: %lu, audio samples sent: %lu, sound %s\n",
                           ble_keyboard_report_count(), audio_samples_written(),
-                          machine_sound_on() ? "on" : "off");
+                          machine->sound_on() ? "on" : "off");
             Serial.printf("full-panel repaints: %lu\n", display_full_repaints());
             if (fps > 0.0f && frames > lastFramesBlit) {
                 float perFrameUs = (float)blitUs / (float)(frames - lastFramesBlit);
@@ -236,14 +236,14 @@ static void handleLine(char *line) {
         }
 
         default:
-            if (machine_debug_command(line)) break;
+            if (machine->debug_command(line)) break;
             /* fall through to help */
         case '?':
             Serial.println("s=screen  t <text>=type (\\n = Return)  g <code>=glyph  r <addr> [n]=peek");
             Serial.println("z [1|2]=scale  x <n>=test pattern  w <0|1>=byte swap");
             Serial.println("n <0|1>=sound  a [hz] [ms]=test tone  b <0|1>=BLE scan  k <0|1>=HID dump");
             Serial.println("m <0|1>=SD card  h=status");
-            if (machine_debug_help()[0]) Serial.println(machine_debug_help());
+            if (machine->debug_help()[0]) Serial.println(machine->debug_help());
             break;
     }
 }

@@ -9,7 +9,7 @@
  * NimBLEDevice::init() (see the note in platformio.ini).
  *
  * This file is only the transport. Everything about what the keys MEAN
- * belongs to whichever machine is built in, behind machine_hid_report();
+ * belongs to whichever machine is built in, behind machine->hid_report();
  * this file knows nothing about MSX or Spectrum, and they know nothing
  * about BLE.
  */
@@ -295,7 +295,7 @@ void ble_keyboard_poll() {
     memcpy(report, sReport, 8);
     portEXIT_CRITICAL(&sReportMux);
 
-    machine_hid_report(report);
+    machine->hid_report(report);
 }
 
 static void bleServiceTask(void *arg) {

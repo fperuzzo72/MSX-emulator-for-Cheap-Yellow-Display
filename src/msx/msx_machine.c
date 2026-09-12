@@ -1,55 +1,62 @@
-/* msx_machine.c - the MSX seen through the machine interface.
+/* msx_machine.c - the MSX, as the board sees it.
  *
  * Thin on purpose: it forwards to msx_bridge.c and msx_keys.c, which are
- * the code that was actually brought up and verified on hardware. The
- * point of this file is that src/device/ can talk to an MSX or a Spectrum
- * without knowing which.
+ * the code that was brought up and verified on hardware. What this file
+ * adds is the Machine table, so src/device/ can drive an MSX or a
+ * Spectrum without knowing which it has.
  */
-#include <string.h>
 #include <stdio.h>
 
 #include "machine.h"
 #include "msx_bridge.h"
 #include "msx_keys.h"
+#include "msx_carts.h"
 
-const char *machine_name(void) { return "MSX1 (Hotbit HB-8000)"; }
+static int  m_prealloc(void)      { return msx_video_prealloc(); }
+static void m_run(void)           { msx_keys_init(); msx_run(); }
+static int  m_ready(void)         { return msx_memory_claimed(); }
+static unsigned long m_frames(void) { return msx_frame_count(); }
 
-int  machine_prealloc_video(void) { return msx_video_prealloc(); }
-void machine_run(void)            { msx_keys_init(); msx_run(); }
-int  machine_ready(void)          { return msx_memory_claimed(); }
-unsigned long machine_frames(void){ return msx_frame_count(); }
+static void m_hid(const uint8_t report[8]) { msx_keys_set_report(report); }
+static int  m_type(const char *text)       { return msx_keys_type(text); }
+static int  m_typing(void)                 { return msx_keys_typing(); }
 
-void machine_hid_report(const uint8_t report[8]) { msx_keys_set_report(report); }
-int  machine_type(const char *text)              { return msx_keys_type(text); }
-int  machine_typing(void)                        { return msx_keys_typing(); }
-
-int machine_screen_row(int row, uint8_t *out, int max) {
+static int m_screen_row(int row, uint8_t *out, int max) {
     return msx_screen_row(row, out, max);
 }
 
-const char *machine_screen_mode_name(void) {
-    static char buf[32];
+static const char *m_screen_mode(void) {
+    static char buf[24];
     snprintf(buf, sizeof(buf), "SCREEN %d", msx_screen_mode());
     return buf;
 }
 
-int machine_char_pattern(int code, uint8_t *rows8) {
-    return msx_char_pattern(code, rows8);
+static int  m_char_pattern(int c, uint8_t *r) { return msx_char_pattern(c, r); }
+static int  m_peek(int a)                     { return msx_peek(a); }
+static void m_set_sound(int on)               { msx_set_sound(on); }
+static int  m_sound_on(void)                  { return msx_sound_on(); }
+
+/* Entry 0 is the machine with an empty slot, which on a real BIOS means
+ * MSX-BASIC. The rest are the cartridges built into this firmware. */
+static int m_entry_count(void) { return 1 + msx_cart_count_get(); }
+
+static const char *m_entry_name(int i) {
+    return i <= 0 ? "MSX-BASIC" : msx_cart_name(i - 1);
 }
 
-int machine_peek(int addr)      { return msx_peek(addr); }
-void machine_set_sound(int on)  { msx_set_sound(on); }
-int  machine_sound_on(void)     { return msx_sound_on(); }
+static void m_select_entry(int i) { msx_cart_select(i <= 0 ? -1 : i - 1); }
+static int  m_selected_entry(void) { return msx_cart_selected() + 1; }
 
-/* Commands that only make sense on this machine: the dead-key probe and
- * the raw matrix press, both of which exist because the Hotbit's keyboard
- * had to be mapped out by pressing keys and reading the result back. */
-const char *machine_debug_help(void) {
+/* Commands that only make sense here: the dead-key probe and the raw
+ * matrix press, both of which exist because this machine's keyboard had
+ * to be mapped out by pressing keys and reading the result back. */
+static const char *m_debug_help(void) {
     return "  d <n> <shift> <char>   press dead key n then a character\n"
-           "  p <row> <bit> <mods>   press one matrix position (mods: 1 Shift, 2 Ctrl)";
+           "  p <row> <bit> <mods>   press one matrix position (1 Shift, 2 Ctrl)\n"
+           "  c [n]                  list cartridges, or select one and reboot";
 }
 
-int machine_debug_command(const char *line) {
+static int m_debug_command(const char *line) {
     int a = 0, b = 0, c = 0;
     char ch = 'a';
 
@@ -66,7 +73,26 @@ int machine_debug_command(const char *line) {
                 printf("pressed row %d bit 0x%02X mods %d (1=Shift 2=Ctrl)\n", a, b, c);
             }
             return 1;
+        case 'c':
+            if (sscanf(line + 1, "%d", &a) == 1) {
+                msx_cart_select(a);
+                printf("selected: %s - rebooting\n", msx_cart_name(a));
+                msx_reboot();
+            } else {
+                msx_cart_list();
+            }
+            return 1;
         default:
             return 0;
     }
 }
+
+const Machine msx_machine = {
+    "MSX1 (Hotbit HB-8000)",
+    m_prealloc, m_run, m_ready, m_frames,
+    m_hid, m_type, m_typing,
+    m_screen_row, m_screen_mode, m_char_pattern, m_peek,
+    m_set_sound, m_sound_on,
+    m_entry_count, m_entry_name, m_select_entry, m_selected_entry,
+    m_debug_command, m_debug_help,
+};

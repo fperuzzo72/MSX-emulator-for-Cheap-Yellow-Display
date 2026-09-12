@@ -17,6 +17,10 @@
  * working driver for this same board (CYD-MicroBASIC-MicroWriter,
  * editor/src/main.cpp) default-constructs it too. */
 static TFT_eSPI tft;
+
+/* The boot menu draws before any machine exists, and it needs the same
+ * panel object: two TFT_eSPI instances would fight over one bus. */
+TFT_eSPI &panel_tft() { return tft; }
 static uint16_t lineBuf[DISPLAY_PANEL_W];
 
 /* --- where the picture goes on the panel -------------------------

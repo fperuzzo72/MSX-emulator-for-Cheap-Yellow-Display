@@ -27,13 +27,14 @@
 #include "machine.h"
 #include "debug_console.h"
 #include "display.h"
+#include "boot_menu.h"
 
 static void machineTask(void *arg) {
     (void)arg;
     Serial.printf("%s: starting, free heap %u, largest block %u\n",
-                  machine_name(), board_free_heap(), board_largest_block());
+                  machine->name, board_free_heap(), board_largest_block());
     board_heap_report();
-    machine_run();
+    machine->run();
     Serial.println("machine: exited");
     vTaskDelete(NULL);
 }
@@ -41,24 +42,36 @@ static void machineTask(void *arg) {
 void setup() {
     Serial.begin(115200);
     delay(300);
-    Serial.printf("\n\nCYD emulator: %s\n", machine_name());
+
+    /* Whatever this board was last told to be. With one machine built in
+     * there is nothing to choose; with both, the boot menu can still
+     * change it below. */
+    machine = machine_list[machine_chosen_index()];
+
+    Serial.printf("\n\nCYD emulator: %s\n", machine->name);
     Serial.printf("boot: free heap %u, largest block %u\n",
                   board_free_heap(), board_largest_block());
 
     display_bridge_init();
 
+    /* Choose before anything allocates. The menu draws on the panel and
+     * reads the touchscreen, so it needs neither the keyboard nor any
+     * memory worth speaking of. */
+    boot_menu_run();
+
     /* First claim on the heap goes to the framebuffer. */
-    if (!machine_prealloc_video())
+    if (!machine->prealloc_video())
         Serial.println("video: framebuffer allocation FAILED");
 
     debug_console_init();
+
 
     /* 12KB: the CPU cores and the renderers here are iterative, not
      * recursive, and on a board with no PSRAM 20KB of unused stack is
      * 20KB the emulated machine does not get. */
     xTaskCreatePinnedToCore(machineTask, "machine", 12288, NULL, 5, NULL, 1);
 
-    for (int i = 0; i < 200 && !machine_ready(); i++) delay(25);
+    for (int i = 0; i < 200 && !machine->ready(); i++) delay(25);
     Serial.printf("boot: machine has its memory, free %u, largest block %u\n",
                   board_free_heap(), board_largest_block());
 

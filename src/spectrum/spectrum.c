@@ -270,16 +270,14 @@ static void runFrame(void) {
 /* ---------------------------------------------------------------- */
 /* machine.h                                                          */
 /* ---------------------------------------------------------------- */
-const char *machine_name(void) { return "ZX Spectrum 48K"; }
-
-int machine_prealloc_video(void) {
+static int m_prealloc(void) {
     if (!sBand)
         sBand = (uint8_t *)heap_caps_malloc(DISPLAY_PICTURE_W * BAND_LINES,
                                             MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
     return sBand != 0;
 }
 
-void machine_run(void) {
+static void m_run(void) {
 #ifndef HAVE_SPECTRUM_ROM
     printf("spectrum: no ROM built in. See src/spectrum/spectrum.h - supply a\n"
            "          48K ROM and run tools/embed_rom.py. Stopping.\n");
@@ -305,21 +303,21 @@ void machine_run(void) {
 #endif
 }
 
-int machine_ready(void) { return sReady; }
-unsigned long machine_frames(void) { return sFrames; }
+static int m_ready(void) { return sReady; }
+static unsigned long m_frames(void) { return sFrames; }
 
-void machine_hid_report(const uint8_t report[8]) { spectrum_keys_hid(report); }
-int  machine_type(const char *text)              { return spectrum_keys_type(text); }
-int  machine_typing(void)                        { return spectrum_keys_typing(); }
+static void m_hid(const uint8_t report[8]) { spectrum_keys_hid(report); }
+static int  m_type(const char *text)       { return spectrum_keys_type(text); }
+static int  m_typing(void)                 { return spectrum_keys_typing(); }
 
-const char *machine_screen_mode_name(void) { return "256x192, 32x24 attributes"; }
+static const char *m_screen_mode(void) { return "256x192, 32x24 attributes"; }
 
 /* The Spectrum has no text mode: what is on screen is a bitmap. But the
  * ROM carries an 8x8 font, so a cell can be matched against it and named.
  * That is what makes the console's screen readback work here at all, and
  * it is how this machine gets checked over the USB cable the same way the
  * MSX is. */
-int machine_screen_row(int row, uint8_t *out, int max) {
+static int m_screen_row(int row, uint8_t *out, int max) {
 #ifndef HAVE_SPECTRUM_ROM
     (void)row; (void)out; (void)max;
     return 0;
@@ -342,7 +340,7 @@ int machine_screen_row(int row, uint8_t *out, int max) {
 #endif
 }
 
-int machine_char_pattern(int code, uint8_t *rows8) {
+static int m_char_pattern(int code, uint8_t *rows8) {
 #ifndef HAVE_SPECTRUM_ROM
     (void)code; (void)rows8;
     return 0;
@@ -355,7 +353,7 @@ int machine_char_pattern(int code, uint8_t *rows8) {
 #endif
 }
 
-int machine_peek(int addr) {
+static int m_peek(int addr) {
     if (addr < 0 || addr > 0xFFFF) return -1;
     if (addr < SPEC_ROM_SIZE) {
 #ifdef HAVE_SPECTRUM_ROM
@@ -367,11 +365,25 @@ int machine_peek(int addr) {
     return sRAM ? sRAM[addr - SPEC_ROM_SIZE] : -1;
 }
 
-void machine_set_sound(int on) { sSoundOn = on ? 1 : 0; }
-int  machine_sound_on(void)    { return sSoundOn; }
+static void m_set_sound(int on) { sSoundOn = on ? 1 : 0; }
+static int  m_sound_on(void)    { return sSoundOn; }
 
-const char *machine_debug_help(void) {
-    return "  (no machine-specific commands on the Spectrum yet)";
-}
+static const char *m_debug_help(void) { return ""; }
+static int m_debug_command(const char *line) { (void)line; return 0; }
 
-int machine_debug_command(const char *line) { (void)line; return 0; }
+/* Only one thing to boot into so far. Snapshots built into the firmware
+ * would appear here, the same way the MSX's cartridges do. */
+static int         m_entry_count(void)    { return 1; }
+static const char *m_entry_name(int i)    { (void)i; return "Spectrum BASIC"; }
+static void        m_select_entry(int i)  { (void)i; }
+static int         m_selected_entry(void) { return 0; }
+
+const Machine spectrum_machine = {
+    "ZX Spectrum 48K",
+    m_prealloc, m_run, m_ready, m_frames,
+    m_hid, m_type, m_typing,
+    m_screen_row, m_screen_mode, m_char_pattern, m_peek,
+    m_set_sound, m_sound_on,
+    m_entry_count, m_entry_name, m_select_entry, m_selected_entry,
+    m_debug_command, m_debug_help,
+};
