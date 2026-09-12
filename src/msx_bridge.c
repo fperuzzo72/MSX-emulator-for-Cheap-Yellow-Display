@@ -120,6 +120,14 @@ int msx_type_char(unsigned char code) {
 
 int msx_caps_on(void) { return msxPeek(MSX_CAPST) != 0; }
 
+extern int MSXSoundOn;            /* platform_glue.c */
+extern unsigned long FullRepaints; /* video/AVideo.i */
+
+unsigned long msx_full_repaints(void) { return FullRepaints; }
+
+void msx_set_sound(int on) { MSXSoundOn = on ? 1 : 0; }
+int  msx_sound_on(void)    { return MSXSoundOn; }
+
 int msx_peek(int addr) {
     if (addr < 0 || addr > 0xFFFF) return -1;
     if (!RAM[addr >> 13]) return -1;

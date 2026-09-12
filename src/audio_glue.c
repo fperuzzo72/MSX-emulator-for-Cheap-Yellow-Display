@@ -16,9 +16,19 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/i2s.h"
+#include "driver/gpio.h"
 
 #include "EMULib.h"
 #include "Sound.h"
+
+/* The board has an amplifier behind an enable pin, and it is enabled by
+ * pulling that pin LOW. Freenove's own MP3 example for this board does
+ * exactly this before playing anything (AUDIO_EN 4, digitalWrite LOW).
+ * Without it the DAC dutifully drives GPIO25/26 and nothing comes out of
+ * the speaker, which is precisely what was happening here: the emulator
+ * was mixing sound correctly and feeding it to a switched-off amp. */
+#define AUDIO_EN_PIN    GPIO_NUM_4
+#define AUDIO_EN_ACTIVE 0
 
 #define AUDIO_PORT      I2S_NUM_0
 #define AUDIO_DMA_BUFS  4
@@ -26,6 +36,13 @@
 
 static int sRate = 0;
 static int sPaused = 0;
+
+/* Samples actually handed to the DAC, so the serial console can say
+ * whether silence means the core is not producing any or the speaker is
+ * not playing what it is given. */
+static unsigned long sSamplesOut = 0;
+
+unsigned long audio_samples_written(void) { return sSamplesOut; }
 
 unsigned int InitAudio(unsigned int Rate, unsigned int Latency) {
     i2s_config_t cfg;
@@ -45,6 +62,9 @@ unsigned int InitAudio(unsigned int Rate, unsigned int Latency) {
     cfg.dma_buf_count = AUDIO_DMA_BUFS;
     cfg.dma_buf_len = AUDIO_DMA_LEN;
     cfg.use_apll = false;
+
+    gpio_set_direction(AUDIO_EN_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(AUDIO_EN_PIN, AUDIO_EN_ACTIVE);
 
     if (i2s_driver_install(AUDIO_PORT, &cfg, 0, NULL) != ESP_OK) return 0;
     i2s_set_pin(AUDIO_PORT, NULL); /* NULL pin config = built-in DAC */
@@ -97,6 +117,7 @@ unsigned int WriteAudio(sample *Data, unsigned int Length) {
             break;
         if (!wrote) break;
         done += wrote / (2 * sizeof(unsigned short));
+        sSamplesOut += wrote / (2 * sizeof(unsigned short));
     }
     return done;
 }
@@ -108,4 +129,32 @@ int PauseAudio(int Switch) {
         if (sPaused && sRate) i2s_zero_dma_buffer(AUDIO_PORT);
     }
     return sPaused;
+}
+
+/* A plain square wave straight to the DAC, with the emulator out of it.
+ * If this is audible the output path works and any silence is the core's;
+ * if it is not, the fault is here or in the amplifier. */
+void audio_test_tone(int hz, int ms) {
+    static unsigned short buf[256];
+    int total, i, phase = 0, half;
+    size_t wrote;
+
+    if (!sRate || hz <= 0) return;
+    half = sRate / (hz * 2);
+    if (half < 1) half = 1;
+    total = sRate * ms / 1000;
+
+    while (total > 0) {
+        int n = total > 128 ? 128 : total;
+        for (i = 0; i < n; i++) {
+            unsigned short v = (phase < half) ? 0xC000 : 0x4000;
+            buf[i * 2] = v;
+            buf[i * 2 + 1] = v;
+            if (++phase >= half * 2) phase = 0;
+        }
+        if (i2s_write(AUDIO_PORT, buf, n * 2 * sizeof(unsigned short), &wrote,
+                      pdMS_TO_TICKS(200)) != ESP_OK)
+            break;
+        total -= n;
+    }
 }

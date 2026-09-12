@@ -198,6 +198,7 @@ static const struct {
 #define FB_BAND_LINES 24
 
 uint8_t* msxFramebuffer;   /* WIDTH * FB_BAND_LINES, one band */
+unsigned long FullRepaints = 0; /* whole-panel fills, counted for the console */
 static int bandTop  = -1;  /* absolute picture line held in row 0 of it */
 static int bandFill = 0;   /* rows written into the band so far         */
 
@@ -757,6 +758,7 @@ uint8_t *GetBuffer(register byte Y,register uint8_t C, register int M)
              * be repainted too when the background colour changes or the
              * picture scale is switched. */
             display_fill_panel(XPal[BGColor]);
+            FullRepaints++;
             lastBGColor = XPal[BGColor];
             VideoTaskCommand = 0;
         }

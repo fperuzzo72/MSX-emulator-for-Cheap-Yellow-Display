@@ -19,6 +19,8 @@
 extern "C" void display_request_test_pattern(int which);
 extern "C" void display_set_swap_bytes(int on);
 extern "C" void display_set_scale(int scale);
+extern "C" void audio_test_tone(int hz, int ms);
+extern "C" unsigned long audio_samples_written(void);
 extern "C" int  display_get_scale(void);
 
 /* The handful of MSX international-charset codes worth naming when they
@@ -116,6 +118,30 @@ static void handleLine(char *line) {
                           "4 white block via TFT_eSPI, 5 same block via the emulator's path)\n", which);
             break;
         }
+        case 'b': {
+            int on = 1;
+            sscanf(line + 1, "%d", &on);
+            ble_keyboard_scan(on);
+            Serial.printf("BLE scan %s (%lu adverts seen)\n",
+                          on ? "on" : "off", ble_keyboard_adverts_seen());
+            break;
+        }
+        case 'n': {
+            int on = 1;
+            sscanf(line + 1, "%d", &on);
+            msx_set_sound(on);
+            Serial.printf("sound %s\n", on ? "on" : "off");
+            break;
+        }
+        case 'a': {
+            int hz = 440, ms = 600;
+            sscanf(line + 1, "%d %d", &hz, &ms);
+            Serial.printf("test tone %d Hz for %d ms (samples sent so far: %lu)\n",
+                          hz, ms, audio_samples_written());
+            audio_test_tone(hz, ms);
+            Serial.println("tone done");
+            break;
+        }
         case 'r': {
             int addr = 0, len = 8;
             if (sscanf(line + 1, "%i %i", &addr, &len) >= 1) {
@@ -185,12 +211,14 @@ static void handleLine(char *line) {
                           msx_free_heap(),
                           ble_keyboard_connected() ? "connected" : "not connected",
                           fps, msx_keys_typing(), msx_keys_pending_accent());
-            Serial.printf("HID reports received: %lu\n", ble_keyboard_report_count());
+            Serial.printf("HID reports received: %lu, audio samples sent: %lu\n",
+                          ble_keyboard_report_count(), audio_samples_written());
+            Serial.printf("full-panel repaints: %lu\n", msx_full_repaints());
             break;
         }
         case '?':
         default:
-            Serial.println("s=screen  t <text>=type  d=dead-key probe  g <code>=glyph  r <addr> [len]=peek MSX memory  m <0|1>=unmount/mount the card  p <row> <bit> <shift>=press a matrix key  k [0|1]=dump HID reports  z [1|2]=picture scale  x <n>=test pattern  w <0|1>=byte swap  h=status");
+            Serial.println("s=screen  t <text>=type  d=dead-key probe  g <code>=glyph  b <0|1>=BLE scan on/off  n <0|1>=sound on/off  a [hz] [ms]=test tone  r <addr> [len]=peek MSX memory  m <0|1>=unmount/mount the card  p <row> <bit> <shift>=press a matrix key  k [0|1]=dump HID reports  z [1|2]=picture scale  x <n>=test pattern  w <0|1>=byte swap  h=status");
             break;
     }
 }

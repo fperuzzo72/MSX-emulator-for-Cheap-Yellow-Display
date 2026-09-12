@@ -80,6 +80,13 @@ unsigned int Mouse(byte N) { (void)N; return 0; }
 /** that frame covered; RenderAndPlayAudio() turns that into     */
 /** samples and calls WriteAudio() in src/audio_glue.c.          */
 /*******************************************************************/
+/* Mixing the PSG, SCC and OPLL for a frame's worth of samples is real CPU
+ * work on a core that is already emulating a Z80 and pushing pixels: it
+ * costs about a quarter of the frame rate. Worth having, worth being able
+ * to turn off. */
+int MSXSoundOn = 1;
+
 void PlayAllSound(int uSec) {
+    if (!MSXSoundOn) return;
     RenderAndPlayAudio((unsigned int)((long long)uSec * GetSndRate() / 1000000));
 }

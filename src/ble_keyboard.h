@@ -37,6 +37,8 @@ int ble_keyboard_connected(void);
  * discarded until you look at the bytes. */
 unsigned long ble_keyboard_report_count(void);
 void ble_keyboard_log_reports(int on);
+unsigned long ble_keyboard_adverts_seen(void);
+void ble_keyboard_scan(int on);
 
 #ifdef __cplusplus
 }

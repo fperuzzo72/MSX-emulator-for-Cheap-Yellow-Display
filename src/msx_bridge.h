@@ -59,6 +59,16 @@ int msx_screen_row(int row, uint8_t *out, int max);
  * expect to find them. */
 int msx_type_char(unsigned char code);
 
+/* How many times the whole panel has been repainted rather than just the
+ * picture. Should be a handful since boot; once per frame means something
+ * is thrashing. */
+unsigned long msx_full_repaints(void);
+
+/* Sound on or off at runtime. Off gives back about a quarter of the frame
+ * rate; see docs/DISPLAY.md on why speed is scarce here. */
+void msx_set_sound(int on);
+int  msx_sound_on(void);
+
 /* Read a byte of the emulated machine's memory, for checking that the
  * system-variable addresses this firmware pokes at are really where the
  * documentation says they are. Returns -1 if that page is not RAM. */

@@ -73,12 +73,22 @@ static uint8_t sReport[8] = {0};
  * like a keyboard that pairs and sends reports we throw away, and the only
  * way to tell is to look at the bytes. `k 1` on the serial console turns
  * the dump on. */
+static volatile uint32_t sAdvSeen = 0;
 static volatile uint32_t sNotifyCount = 0;
 static volatile uint8_t  sLastLen = 0;
 static volatile bool     sLogReports = false;
 
 void ble_keyboard_log_reports(int on) { sLogReports = on ? true : false; }
 unsigned long ble_keyboard_report_count(void) { return (unsigned long)sNotifyCount; }
+unsigned long ble_keyboard_adverts_seen(void) { return (unsigned long)sAdvSeen; }
+
+/* Stop or restart the scan. Scanning is not free: the radio and its
+ * callbacks run on the other core, and this is here to be able to measure
+ * what that costs the emulation rather than argue about it. */
+void ble_keyboard_scan(int on) {
+    if (on) NimBLEDevice::getScan()->start(0, false, true);
+    else    NimBLEDevice::getScan()->stop();
+}
 
 static void notifyCB(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len, bool isNotify) {
     (void)isNotify;
@@ -127,14 +137,10 @@ class KbdScanCallbacks : public NimBLEScanCallbacks {
                              dev->isAdvertisingService(NimBLEUUID(HID_SERVICE_UUID));
         const bool saysKeyboard = (appearance == 0x3C1);
         if (!saysHid && !saysKeyboard) {
-            /* Say what was seen and passed over. Pairing has never been
-             * tried on this board, so the first attempt should not have
-             * to guess why nothing happened - a keyboard that is
-             * Bluetooth Classic rather than BLE, for instance, never
-             * shows up here at all. */
-            static unsigned seen = 0;
-            if (++seen % 20 == 0)
-                Serial.printf("BLE: %u advertisements seen, none advertising HID yet\n", seen);
+            /* Counted rather than printed: printing from the scan
+             * callback put UART traffic in the middle of the emulation's
+             * frame budget. `h` on the console reports the count. */
+            sAdvSeen++;
             return;
         }
         /* A HID service that is explicitly something other than a
