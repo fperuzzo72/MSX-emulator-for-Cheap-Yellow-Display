@@ -30,10 +30,13 @@ enum {
 /* Bit 0 is the leftmost key of each half-row above. */
 static uint8_t sMatrix[8];
 
-#define KEY(row, bit) (uint8_t)(((row) << 3) | (bit))
-#define KEY_ROW(k) ((k) >> 3)
-#define KEY_BIT(k) ((k) & 7)
-#define NO_KEY 0xFF
+/* Stored one higher than the real code so that a zero - which is what an
+ * unmapped entry in the table below is - means "no key" rather than Caps
+ * Shift, whose matrix code happens to be 0. */
+#define KEY(row, bit) (uint8_t)(((((row) << 3) | (bit))) + 1)
+#define KEY_ROW(k) (((k) - 1) >> 3)
+#define KEY_BIT(k) (((k) - 1) & 7)
+#define NO_KEY 0
 
 #define K_CAPS   KEY(ROW_CAPS_V, 0)
 #define K_SYM    KEY(ROW_SPACE_B, 1)
@@ -115,7 +118,7 @@ static void rebuild(void) {
     for (i = 0; i < 6; i++) {
         uint8_t hid = sHeld[i];
         if (!hid || hid >= 0x68) continue;
-        if (kHid[hid].key == 0 && hid != 0x04) continue;  /* 0x04 is 'a', key 0 */
+        if (kHid[hid].key == NO_KEY) continue;   /* nothing here on a Spectrum */
         press(kHid[hid].key);
         if (kHid[hid].caps) press(K_CAPS);
         if (kHid[hid].sym)  press(K_SYM);

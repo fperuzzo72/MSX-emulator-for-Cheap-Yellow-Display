@@ -104,7 +104,13 @@ void PatchZ80(Z80 *R) { (void)R; }
 /* The display file is famously not linear: within a third of the screen,
  * consecutive addresses step eight pixel rows at a time. */
 static uint16_t screenAddr(int y, int xByte) {
-    return (uint16_t)(((y & 0xC0) << 5) | ((y & 0x07) << 8) | ((y & 0x38) << 2) | xByte);
+    /* Absolute, including the 0x4000 base, so callers can subtract
+     * SPEC_ROM_SIZE to index sRAM. Returning a bare offset here and then
+     * subtracting 0x4000 from it - which is what this did first - indexes
+     * 16kB before the buffer. */
+    return (uint16_t)(SPEC_SCREEN
+                      | ((y & 0xC0) << 5) | ((y & 0x07) << 8)
+                      | ((y & 0x38) << 2) | xByte);
 }
 
 static void flushBand(void) {
