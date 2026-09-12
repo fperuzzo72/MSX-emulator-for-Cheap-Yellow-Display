@@ -8,16 +8,17 @@
  * Arduino-ESP32 3.x: on 1.x the firmware compiles but aborts during
  * NimBLEDevice::init() (see the note in platformio.ini).
  *
- * This file is only the transport. Everything about what the keys MEAN -
- * the US-International layer, the dead keys, this machine's matrix - is
- * in msx_keys.c, which is plain C and knows nothing about BLE.
+ * This file is only the transport. Everything about what the keys MEAN
+ * belongs to whichever machine is built in, behind machine_hid_report();
+ * this file knows nothing about MSX or Spectrum, and they know nothing
+ * about BLE.
  */
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <Preferences.h>
 #include <cstring>
 #include "ble_keyboard.h"
-#include "msx_keys.h"
+#include "machine.h"
 
 static const char HID_SERVICE_UUID[]        = "1812";
 static const char HID_BOOT_KBD_INPUT_UUID[] = "2a22"; /* Boot Keyboard Input Report */
@@ -282,5 +283,5 @@ void ble_keyboard_poll() {
     memcpy(report, sReport, 8);
     portEXIT_CRITICAL(&sReportMux);
 
-    msx_keys_set_report(report);
+    machine_hid_report(report);
 }

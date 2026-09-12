@@ -1,11 +1,10 @@
 {
   "name": "fmsx_core",
   "version": "1.0.0",
-  "description": "Vendored fMSX/Z80/EMULib core plus the ESPlay video layer. See ../../third_party_licenses/ for the license of each piece.",
+  "description": "Vendored fMSX/EMULib core plus the ESPlay video layer. The Z80 lives in ../z80, shared with the other machine. See ../../third_party_licenses/ for the license of each piece.",
   "build": {
     "srcDir": ".",
     "srcFilter": [
-      "+<Z80/Z80.c>",
       "+<fMSX/MSX.c>",
       "+<fMSX/V9938.c>",
       "+<fMSX/I8251.c>",
@@ -25,6 +24,6 @@
       "+<video/video_glue.c>"
     ],
     "includeDir": ".",
-    "flags": ["-I Z80", "-I fMSX", "-I EMULib", "-I video"]
+    "flags": ["-I ../z80", "-I fMSX", "-I EMULib", "-I video"]
   }
 }

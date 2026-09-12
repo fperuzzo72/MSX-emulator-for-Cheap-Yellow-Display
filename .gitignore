@@ -6,7 +6,8 @@
 hotbi13p/
 *.rom
 *.ic3c
-src/hotbit_bios_data.c
+src/msx/hotbit_bios_data.c
 .DS_Store
 .pio/
-src/local_cart_data.c
+src/msx/local_cart_data.c
+src/spectrum/*_rom_data.c

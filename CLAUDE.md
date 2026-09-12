@@ -7,27 +7,27 @@ still open.
 
 ## What this is
 
-MSX1 emulator firmware for the Freenove FNK0103 3.5" ESP32 display board
-("Cheap Yellow Display" style: plain ESP32-WROOM-32E, ST7796 SPI TFT,
-resistive touch, microSD slot), with input from a BLE keyboard instead of
-the touchscreen. PlatformIO + Arduino framework. Not commissioned as a
-one-off script - it's meant to be built on incrementally.
+Emulator firmware for the Freenove FNK0103 3.5" ESP32 display board (the
+"Cheap Yellow Display": plain ESP32-WROOM-32E, ST7796 SPI TFT, resistive
+touch, microSD), with input from a BLE keyboard rather than the
+touchscreen. PlatformIO + Arduino.
 
-**Status (2026-09-11): running on hardware, picture on the panel.** It
-boots a real Sharp/Epcom Hotbit HB-8000 BIOS into MSX-BASIC with sound,
-no SD card needed - the BIOS is embedded in the firmware. Speed is ~42 fps at 1:1 (about 70% of MSX speed). An earlier figure of 59-61 fps
-in this repo was wrong: it was measured while the SD mount had stolen the
-display's SPI bus, so nothing was actually being drawn. With the panel
-really driven, the blit costs what it costs, and because fMSX paces the
-Z80 against the frame, that slows the whole machine and not just the
-picture. At the 1.5x scale it is ~25-33 fps. Getting this back is the
-obvious next piece of work; a first attempt at overlapping the blit with
-DMA (TFT_eSPI pushPixelsDMA with two line buffers) put a flashing white
-screen up and was reverted, so it needs doing properly rather than
-quickly. Verified by driving the
-machine over the serial console and reading its screen back out of the
-emulated VDP; see "Checking it without a keyboard in the room" in
-docs/KEYBOARD.md. A BLE keyboard pairs and types, verified on hardware.
+**Two machines are built from this tree**, one firmware each:
+
+- `pio run -e msx` - MSX1, an Epcom Hotbit HB-8000. **Running on
+  hardware**: boots a dumped BIOS into MSX-BASIC with no SD card, sound
+  generated, BLE keyboard with US-International accents, cartridges from
+  flash. 20-30 fps depending on scale.
+- `pio run -e spectrum` - ZX Spectrum 48K. **Compiles; has never run.**
+  There is no Spectrum ROM on this machine and the board was unplugged
+  when it was written. Do not describe it as working.
+
+The split that makes this possible: `src/device/` is the board and knows
+nothing about what is emulated, `src/msx/` and `src/spectrum/` are
+machines and know nothing about the board, and `src/machine.h` is the only
+thing that crosses. `lib/z80/` is the CPU, shared; `lib/fmsx_core/` is the
+rest of fMSX and is MSX-only, excluded from the Spectrum build by
+`lib_ignore`.
 
 ## How it's built (context for future changes)
 

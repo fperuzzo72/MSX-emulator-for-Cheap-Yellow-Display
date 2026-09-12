@@ -1,13 +1,13 @@
 /* display_bridge.cpp
  *
- * Implements display_write_frame_msx() (declared in msx_display.h) using
+ * Implements display.h using
  * TFT_eSPI, wired to the FNK0103 3.5" ST7796 panel's real pinout (pulled
  * from Freenove's own TFT_eSPI setup file for this board - see
  * platformio.ini build_flags for the pin numbers and README for source).
  */
 #include <Arduino.h>
 #include <TFT_eSPI.h>
-#include "msx_display.h"
+#include "display.h"
 
 /* Default-constructed on purpose. Passing (480,320) here - the landscape
  * size we actually draw in - tells TFT_eSPI the panel is NATIVELY 480x320,
@@ -17,26 +17,26 @@
  * working driver for this same board (CYD-MicroBASIC-MicroWriter,
  * editor/src/main.cpp) default-constructs it too. */
 static TFT_eSPI tft;
-static uint16_t lineBuf[WIDTH_OVERLAY];
+static uint16_t lineBuf[DISPLAY_PANEL_W];
 
 /* --- where the picture goes on the panel -------------------------
  *
- * The MSX draws 256x216; the panel is 480x320. At 1:1 that leaves a wide
+ * A machine draws 256x216 here; the panel is 480x320. At 1:1 that leaves a wide
  * black surround: crisp, but small. At 1.5x the picture becomes 384x324
  * and very nearly fills the panel, at the cost of every third column and
  * row being a repeat. Neither is obviously right on a text machine, so
  * both are here and `z` on the serial console switches between them.
  * 1.5x is the default because it is the one you can read across a desk.
  * ---------------------------------------------------------------- */
-#define MSX_PIC_W 256
-#define MSX_PIC_H 216
+#define PIC_W DISPLAY_PICTURE_W
+#define PIC_H 216
 
-static int sScale = 2; /* 1 = one panel pixel per MSX pixel, 2 = three per two */
+static int sScale = 2; /* 1 = one panel pixel per machine pixel, 2 = three per two */
 
-static inline int destW(void)  { return sScale == 1 ? MSX_PIC_W : MSX_PIC_W * 3 / 2; }
-static inline int destH(void)  { return sScale == 1 ? MSX_PIC_H : MSX_PIC_H * 3 / 2; }
-static inline int destX0(void) { return (WIDTH_OVERLAY - destW()) / 2; }
-static inline int destY0(void) { return (HEIGHT_OVERLAY - destH()) / 2; } /* sized for the largest possible width param (full-screen clear) */
+static inline int destW(void)  { return sScale == 1 ? PIC_W : PIC_W * 3 / 2; }
+static inline int destH(void)  { return sScale == 1 ? PIC_H : PIC_H * 3 / 2; }
+static inline int destX0(void) { return (DISPLAY_PANEL_W - destW()) / 2; }
+static inline int destY0(void) { return (DISPLAY_PANEL_H - destH()) / 2; } /* sized for the largest possible width param (full-screen clear) */
 
 /* TFT_eSPI sends a uint16_t buffer to the panel in the CPU's byte order
  * unless told otherwise, and the panel wants RGB565 the other way round.
@@ -55,7 +55,15 @@ extern "C" int display_get_swap_bytes(void) { return sSwapBytes ? 1 : 0; }
 
 extern "C" void display_request_test_pattern(int which);
 
-extern "C" void display_fill_panel(uint16_t color) { tft.fillScreen(color); }
+/* Whole-panel fills, as opposed to the picture area. A handful since boot
+ * is normal; once per frame means something is thrashing. */
+static volatile unsigned long sFullRepaints = 0;
+extern "C" unsigned long display_full_repaints(void) { return sFullRepaints; }
+
+extern "C" void display_fill_panel(uint16_t color) {
+    sFullRepaints++;
+    tft.fillScreen(color);
+}
 
 extern uint16_t VideoTaskCommand; /* AVideo.i: setting it to 1 asks for a full repaint */
 
@@ -109,7 +117,7 @@ void display_bridge_init() {
 
     tft.init();
     /* Panel is portrait-native (320x480); rotate to landscape so the
-     * 256x212 MSX picture centers nicely on the wider dimension. If your
+     * 256x192 picture centres nicely on the wider dimension. If your
      * picture comes up mirrored/upside-down, try rotation 3 instead. */
     tft.setRotation(1);
     tft.setSwapBytes(sSwapBytes);
@@ -128,31 +136,26 @@ static void drawTestPattern(int which) {
         case 2: tft.fillScreen(TFT_GREEN); break;
         case 3: tft.fillScreen(TFT_BLUE);  break;
         case 4:
-            /* A white block exactly where the MSX picture is drawn, with
+            /* A white block exactly where the picture is drawn, with
              * a one-pixel red frame around the whole panel. */
             tft.fillScreen(TFT_BLACK);
-            tft.drawRect(0, 0, WIDTH_OVERLAY, HEIGHT_OVERLAY, TFT_RED);
-            tft.fillRect(MSX_DISPLAY_X, MSX_DISPLAY_Y, WIDTH, 212, TFT_WHITE);
+            tft.drawRect(0, 0, DISPLAY_PANEL_W, DISPLAY_PANEL_H, TFT_RED);
+            tft.fillRect((DISPLAY_PANEL_W - PIC_W) / 2, (DISPLAY_PANEL_H - PIC_H) / 2,
+                         PIC_W, PIC_H, TFT_WHITE);
             break;
         case 5: {
-            /* The same block, but drawn the way the emulator draws it:
-             * through display_write_frame_msx, in 24-line bands, out of a
-             * palette. If case 4 looks right and this does not, the fault
-             * is in the band path rather than in the panel setup. */
-            /* Borrow the emulator's own band buffer rather than keeping
-             * a second one: 6kB of .bss here is 6kB the BLE stack does
-             * not get. The next emulated frame overwrites it anyway. */
-            extern uint8_t *msxFramebuffer;
-            uint8_t *band = msxFramebuffer;
+            /* The same block, but drawn the way a machine draws it:
+             * through display_write_picture, in bands, out of a palette.
+             * If case 4 looks right and this does not, the fault is in the
+             * band path rather than in the panel setup. */
+            static uint8_t band[PIC_W];
             static uint16_t pal[16];
-            if (!band) break;
-            for (int i = 0; i < 16; i++) pal[i] = tft.color565((uint8_t)(i * 17), (uint8_t)(255 - i * 17), 0x40);
+            for (int i = 0; i < 16; i++)
+                pal[i] = tft.color565((uint8_t)(i * 17), (uint8_t)(255 - i * 17), 0x40);
             tft.fillScreen(TFT_BLACK);
-            for (int top = 0; top + 24 <= 216; top += 24) {
-                for (int y = 0; y < 24; y++)
-                    for (int x = 0; x < WIDTH; x++)
-                        band[y * WIDTH + x] = (uint8_t)(((top + y) / 8 + x / 16) & 0x0F);
-                display_write_frame_msx(0, top, WIDTH, 24, band, pal[0], pal);
+            for (int y = 0; y < PIC_H; y++) {
+                for (int x = 0; x < PIC_W; x++) band[x] = (uint8_t)((y / 8 + x / 16) & 0x0F);
+                display_write_picture(0, y, PIC_W, 1, band, pal[0], pal);
             }
             break;
         }
@@ -160,11 +163,11 @@ static void drawTestPattern(int which) {
     }
 }
 
-/* Blit a horizontal slice of the MSX picture. `srcY` and `height` are in
- * MSX picture rows, not panel rows: where that lands on the panel and at
+/* Blit a horizontal slice of the picture. `srcY` and `height` are in
+ * picture rows, not panel rows: where that lands on the panel and at
  * what size is this file's business and nobody else's. A NULL buffer is a
  * flat fill of bgColor, which is how the borders are drawn. */
-extern "C" void display_write_frame_msx(short srcX, short srcY, short width, short height,
+extern "C" void display_write_picture(short srcX, short srcY, short width, short height,
                                          const uint8_t *buffer, uint16_t bgColor,
                                          const uint16_t *palette) {
     (void)srcX; /* every caller blits full-width slices */
@@ -182,7 +185,7 @@ extern "C" void display_write_frame_msx(short srcX, short srcY, short width, sho
         last  = dy0 + (srcY + height) * 3 / 2;
     }
     if (first < 0) first = 0;
-    if (last > HEIGHT_OVERLAY) last = HEIGHT_OVERLAY;
+    if (last > DISPLAY_PANEL_H) last = DISPLAY_PANEL_H;
     if (last <= first) return;
 
     const uint32_t t0 = micros();
@@ -216,3 +219,12 @@ extern "C" void display_write_frame_msx(short srcX, short srcY, short width, sho
 }
 
 extern "C" void display_request_test_pattern(int which) { sPendingPattern = which; }
+
+/* The vendored MSX video layer calls this name. Kept as a one-line
+ * forward rather than editing AVideo.i again: that file is upstream code
+ * and every edit to it is one more thing to carry. */
+extern "C" void display_write_frame_msx(short left, short top, short width, short height,
+                                        const uint8_t *buffer, uint16_t bgColor,
+                                        const uint16_t *palette) {
+    display_write_picture(left, top, width, height, buffer, bgColor, palette);
+}

@@ -129,10 +129,7 @@ int msx_type_char(unsigned char code) {
 
 int msx_caps_on(void) { return msxPeek(MSX_CAPST) != 0; }
 
-extern int MSXSoundOn;            /* platform_glue.c */
-extern unsigned long FullRepaints; /* video/AVideo.i */
-
-unsigned long msx_full_repaints(void) { return FullRepaints; }
+extern int MSXSoundOn; /* platform_glue.c */
 
 void msx_set_sound(int on) { MSXSoundOn = on ? 1 : 0; }
 int  msx_sound_on(void)    { return MSXSoundOn; }
@@ -150,16 +147,6 @@ int msx_char_pattern(int code, uint8_t *rows8) {
     return 1;
 }
 
-unsigned int msx_free_heap(void) {
-    return (unsigned int)heap_caps_get_free_size(MALLOC_CAP_8BIT);
-}
-
-unsigned int msx_largest_block(void) {
-    return (unsigned int)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-}
-
 volatile int MSXMemoryClaimed = 0; /* set from InitMachine(), see platform_glue.c */
 
 int msx_memory_claimed(void) { return MSXMemoryClaimed; }
-
-void msx_heap_report(void) { heap_caps_print_heap_info(MALLOC_CAP_8BIT); }

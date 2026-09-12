@@ -54,6 +54,7 @@ void display_service(void);
 
 /* Fill the whole panel, surround included. */
 void display_fill_panel(uint16_t color);
+unsigned long display_full_repaints(void);
 
 /* Picture scale: 1 = one panel pixel per MSX pixel, 2 = three panel
  * pixels per two MSX pixels (1.5x, nearly full screen). */

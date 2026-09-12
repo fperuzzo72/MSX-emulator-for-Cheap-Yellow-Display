@@ -34,20 +34,37 @@ jobs:
       - name: Install PlatformIO Core
         run: pip install --upgrade platformio
 
-      - name: "Build firmware (env: fnk0103)"
-        run: pio run -e fnk0103
+      - name: Build both machines
+        run: pio run
 
-      - name: Upload firmware artifact
+      - name: Upload MSX firmware
         uses: actions/upload-artifact@v4
         with:
-          name: fnk0103-msx-firmware
+          name: cyd-msx-firmware
           # bootloader.bin + partitions.bin + firmware.bin are everything
           # esptool needs to flash from scratch; firmware.elf is handy for
-          # debugging crash backtraces (not needed to flash).
+          # reading crash backtraces (not needed to flash).
+          #
+          # Note this build has no BIOS of its own: it falls back to C-BIOS,
+          # which runs cartridges but not MSX-BASIC. See the README.
           path: |
-            .pio/build/fnk0103/firmware.bin
-            .pio/build/fnk0103/firmware.elf
-            .pio/build/fnk0103/bootloader.bin
-            .pio/build/fnk0103/partitions.bin
+            .pio/build/msx/firmware.bin
+            .pio/build/msx/firmware.elf
+            .pio/build/msx/bootloader.bin
+            .pio/build/msx/partitions.bin
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Spectrum firmware
+        uses: actions/upload-artifact@v4
+        with:
+          # Also built without a ROM, so it will say it has none and stop.
+          # Supply one and rebuild; see src/spectrum/spectrum.h.
+          name: cyd-spectrum-firmware
+          path: |
+            .pio/build/spectrum/firmware.bin
+            .pio/build/spectrum/firmware.elf
+            .pio/build/spectrum/bootloader.bin
+            .pio/build/spectrum/partitions.bin
           if-no-files-found: error
           retention-days: 30

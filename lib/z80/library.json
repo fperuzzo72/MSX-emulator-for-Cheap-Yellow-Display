@@ -1,0 +1,10 @@
+{
+  "name": "z80",
+  "version": "1.0.0",
+  "description": "Marat Fayzullin's Z80 CPU emulator, vendored. A plain Z80 with no machine in it: it asks the user for RdZ80/WrZ80/InZ80/OutZ80/PatchZ80/LoopZ80 and knows nothing else. Both machines in this tree use it. See ../../third_party_licenses/.",
+  "build": {
+    "srcDir": ".",
+    "srcFilter": ["+<Z80.c>"],
+    "includeDir": "."
+  }
+}

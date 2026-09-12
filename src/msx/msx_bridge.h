@@ -59,11 +59,6 @@ int msx_screen_row(int row, uint8_t *out, int max);
  * expect to find them. */
 int msx_type_char(unsigned char code);
 
-/* How many times the whole panel has been repainted rather than just the
- * picture. Should be a handful since boot; once per frame means something
- * is thrashing. */
-unsigned long msx_full_repaints(void);
-
 /* Sound on or off at runtime. Off gives back about a quarter of the frame
  * rate; see docs/DISPLAY.md on why speed is scarce here. */
 void msx_set_sound(int on);
@@ -90,19 +85,9 @@ int msx_char_pattern(int code, uint8_t *rows8);
  * running at - 60 means real MSX speed. */
 unsigned int msx_frame_count(void);
 
-/* Free heap and the largest single block in it. On this board the second
- * number is the one that decides things: the emulated machine wants 64kB
- * in one piece, and the ESP32's DRAM is carved into regions. */
-unsigned int msx_free_heap(void);
-unsigned int msx_largest_block(void);
-
 /* Set once the core has claimed its RAM, VRAM and framebuffer. Anything
  * else that wants a lot of heap should wait for this. */
 int msx_memory_claimed(void);
-
-/* Print the DRAM region map. Which region a block can come from is the
- * thing that actually decides whether this firmware boots. */
-void msx_heap_report(void);
 
 #ifdef __cplusplus
 }

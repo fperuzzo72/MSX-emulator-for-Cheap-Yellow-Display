@@ -1,15 +1,9 @@
-/* audio_glue.c - the audio backend EMULib expects a port to supply.
+/* audio.c - the board's sound output, for whichever machine is built in.
  *
- * Sound.c calls InitAudio/WriteAudio/GetFreeAudio/TrashAudio; every fMSX
- * port implements them against whatever the platform has. This board's
- * speaker hangs off the ESP32's built-in DAC (Freenove's own MP3 example
- * for it constructs AudioOutputI2S(0, 1), i.e. I2S port 0 in internal-DAC
- * mode), so that is what this drives: I2S in DAC mode, which streams
- * samples to GPIO25/26 in the background without the emulator having to
- * keep time.
- *
- * The PSG/SCC/OPLL mixing all happens inside the core already. What was
- * missing was somewhere to put the result.
+ * Board-level and machine-neutral: it takes signed 16-bit mono samples
+ * and puts them on the speaker. What generates them - an MSX PSG, a
+ * Spectrum beeper - is not this file's business. The MSX's adapter onto
+ * EMULib's audio interface lives in src/msx/msx_audio.c.
  */
 #include <string.h>
 
@@ -18,8 +12,7 @@
 #include "driver/i2s.h"
 #include "driver/gpio.h"
 
-#include "EMULib.h"
-#include "Sound.h"
+#include "audio.h"
 
 /* The audio path on this board, read off Freenove's own schematic
  * (Datasheet/3.5inch_ESP32-32E_..._V1.0/Schematic):
@@ -52,7 +45,7 @@ static unsigned long sSamplesOut = 0;
 
 unsigned long audio_samples_written(void) { return sSamplesOut; }
 
-unsigned int InitAudio(unsigned int Rate, unsigned int Latency) {
+unsigned int audio_init(unsigned int Rate) {
     i2s_config_t cfg;
 
     if (!Rate) return 0;
@@ -81,28 +74,22 @@ unsigned int InitAudio(unsigned int Rate, unsigned int Latency) {
 
     sRate = (int)Rate;
     sPaused = 0;
-    (void)Latency;
     return Rate;
 }
 
-void TrashAudio(void) {
+void audio_shutdown(void) {
     if (!sRate) return;
     i2s_driver_uninstall(AUDIO_PORT);
     sRate = 0;
 }
 
-unsigned int GetTotalAudio(void) {
+unsigned int audio_buffer_samples(void) {
     return sRate ? AUDIO_DMA_BUFS * AUDIO_DMA_LEN : 0;
 }
 
-unsigned int GetFreeAudio(void) {
-    /* i2s_write() blocks when the DMA chain is full, and the emulator only
-     * hands us a frame's worth at a time, so reporting the whole buffer as
-     * free is both true enough and keeps the core from throttling itself. */
-    return (sRate && !sPaused) ? GetTotalAudio() : 0;
-}
+int audio_ready(void) { return sRate && !sPaused; }
 
-unsigned int WriteAudio(sample *Data, unsigned int Length) {
+unsigned int audio_write(const short *Data, unsigned int Length) {
     /* The DAC wants unsigned samples in the top 8 bits of each 16-bit
      * word, and both channels written; the core hands us signed mono. */
     static unsigned short conv[256];
@@ -134,8 +121,8 @@ unsigned int WriteAudio(sample *Data, unsigned int Length) {
     return done;
 }
 
-int PauseAudio(int Switch) {
-    if (Switch == 2) Switch = !sPaused;   /* 2 = toggle, per EMULib */
+int audio_pause(int Switch) {
+    if (Switch == 2) Switch = !sPaused;   /* 2 = toggle */
     if (Switch >= 0) {
         sPaused = Switch ? 1 : 0;
         if (sPaused && sRate) i2s_zero_dma_buffer(AUDIO_PORT);
