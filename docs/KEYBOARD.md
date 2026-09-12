@@ -88,6 +88,39 @@ Accents are the exception: they need two keypresses in sequence, so they
 go through a small queue that holds each press for a few frames. Typing an
 accented character costs about 80ms. Nothing a game needs goes near it.
 
+## When a keyboard connects but types nothing
+
+This happened, and it is worth knowing because nothing anywhere reports a
+fault: the connection is up, the subscription succeeded, and the machine
+is simply never told about a keypress.
+
+The cause was Protocol Mode. A BLE HID device can run in Boot Protocol,
+where it notifies the Boot Keyboard Input Report (0x2A22), or in Report
+Protocol, where everything goes out on the generic Report characteristic
+(0x2A4D). A host asks for boot protocol by writing 0 to Protocol Mode
+(0x2A4E) - but that characteristic is optional and often not writable,
+and the device is free to stay where it is. The keyboard tested here has
+no writable Protocol Mode at all, exposes 0x2A22, and never notifies on
+it.
+
+So this firmware subscribes to **both**, always. It costs nothing: the
+notification callback keeps whatever is shaped like a keyboard report and
+ignores the rest. That keyboard turns out to send perfectly ordinary
+8-byte boot-shaped reports, just on 0x2A4D, four of which it exposes.
+
+The instruments, on the serial console:
+
+```
+h        says whether a keyboard is connected and how many HID
+         notifications have arrived - if that number never moves,
+         nothing is being sent to us at all
+k 1      dump every HID report as hex, with the characteristic it
+         came from; k 0 turns it off
+```
+
+The connect log also says what was subscribed and whether boot protocol
+was accepted, which is where the answer was.
+
 ## Checking it without a keyboard in the room
 
 The serial console (115200 8N1) can drive the whole thing:
