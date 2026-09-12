@@ -57,16 +57,70 @@ compose**: grave only takes an `a`, diaeresis only a `u`, circumflex takes
 The keyboard behaves like **US-International**. What is printed on the
 keycap is what appears on the MSX, and the dead keys compose:
 
-- `'` then `a` → á, `'` then `e` → é
-- `~` then `a` → ã, `~` then `o` → õ
-- `^` then `a` → â, `^` then `e` → ê
-- `` ` `` then `a` → à
-- `"` then `u` → ü
-- AltGr + `c` → ç (it has its own key here, so no dead key involved)
+- `'` then `a` -> á, `'` then `e` -> é
+- `~` then `a` -> ã, `~` then `o` -> õ
+- `^` then `a` -> â, `^` then `e` -> ê
+- `` ` `` then `a` -> à
+- `"` then `u` -> ü
+- `'` then `c` -> ç
+
+Case follows the same rule as any other letter on this machine: **CAPS
+exclusive-or Shift**. With CAPS on, `~a` gives Ã; hold Shift with it and
+you get ã.
 
 A dead key followed by something it cannot sit on gives the accent as a
-character, the way it does on a PC: `"` then `S` types `"S`, `'` then
-space types `'`.
+character, the way it does on a PC: `"` then `S` types `"S`, and `'` then
+Space types `'` - one apostrophe, no space after it.
+
+Esc is the **STOP** key, not the machine's ESC. A PC keyboard has no
+BREAK, and Ctrl+STOP is the only way to interrupt a running BASIC
+program, so Ctrl+Esc breaks and Esc alone pauses a listing. The machine's
+own ESC is on PageDown.
+
+## How the accents actually get in
+
+Not through the dead keys. That was the first design and it was wrong.
+
+Driving the BIOS's own composition means pressing the machine's dead key
+and then the letter, and this BIOS decides the case of the result from
+CAPS alone - hold Shift with the letter and it drops the accent and
+prints the bare letter. So Shift did nothing for accented letters and a
+capital one meant reaching for CAPS first. It also cannot make a
+c-cedilla at all (acute+c gives a plain c; on this keyboard ç is a key,
+not a composition), and the keyboard has no key for a bare `~` or `` ` ``
+even though the character set has both.
+
+So the composition happens here instead, ported from the
+US-International state machine in `CYD-MicroBASIC-MicroWriter`, and the
+finished character goes straight into the BIOS's keyboard buffer -
+`KEYBUF` at 0xFBF0, through `PUTPNT` at 0xF3F8 - by `msx_type_char()` in
+`src/msx_bridge.c`. Those addresses were confirmed on the machine with
+the console's `r` command, not taken on faith.
+
+Everything else still goes through the key matrix, where games expect to
+find it, and at no cost in latency.
+
+### The character codes
+
+Measured on the hardware, every accent against every vowel, twice, once
+with CAPS on and once with it off:
+
+| | Á | É | Í | Ó | Ú | À | Ã | Õ | Â | Ê | Ô | Ü | Ç |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| upper | 84 | 90 | 89 | 8A | 8B | 8F | B0 | B4 | 8C | 8D | 8E | 9A | 80 |
+| lower | A0 | 82 | A1 | A2 | A3 | 85 | B1 | B5 | 83 | 88 | 93 | 81 | 87 |
+
+They had to be measured. The **lower** row is the standard MSX
+international character set, but the **upper** row is not: the Hotbit put
+its capital accented letters over codes the standard set uses for
+something else entirely. 0x84 is A-acute here and a-diaeresis in the
+published table. Reading from that table would have produced confident
+nonsense, and did, briefly.
+
+Combinations this machine simply does not have, because Portuguese does
+not need them: grave on anything but a and u, diaeresis on anything but
+u, tilde on n, circumflex on i, and capitals of à-u and û. Those fall
+back to the accent as a literal character.
 
 ## Two things worth knowing about the implementation
 
