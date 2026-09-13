@@ -12,6 +12,7 @@
 
 #define MSX_PROF_VIDEO 0
 #define MSX_PROF_SOUND 1
+#define MSX_PROF_LOOP  2   /* all of LoopZ80: video and sound are inside it */
 
 long long msx_prof_now(void);
 void      msx_prof(int slot, long long since);

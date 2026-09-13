@@ -2102,6 +2102,9 @@ byte RTCIn(register byte R)
 /*************************************************************/
 word LoopZ80(Z80 *R)
 {
+  /* NOT UPSTREAM: profiling, see msx_prof.h. Everything fMSX does other
+   * than run instructions happens in here, once per scanline. */
+  long long profLoop = msx_prof_now();
   static byte BFlag=0;
   static byte BCount=0;
   static int  UCount=0;
@@ -2336,6 +2339,7 @@ word LoopZ80(Z80 *R)
 
   /* Return whatever interrupt is pending */
   R->IRequest=IRQPending? INT_IRQ:INT_NONE;
+  msx_prof(MSX_PROF_LOOP, profLoop);   /* NOT UPSTREAM: see msx_prof.h */
   return(R->IRequest);
 }
 

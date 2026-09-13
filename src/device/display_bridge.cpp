@@ -21,7 +21,11 @@ static TFT_eSPI tft;
 /* The boot menu draws before any machine exists, and it needs the same
  * panel object: two TFT_eSPI instances would fight over one bus. */
 TFT_eSPI &panel_tft() { return tft; }
-static uint16_t lineBuf[DISPLAY_PANEL_W];
+/* Several rows at a time. pushPixels() has a fixed cost per call and a
+ * row is only 512 to 768 bytes, so sending four rows in one go spreads
+ * that cost over four times as much wire. */
+#define BLIT_ROWS 2
+static uint16_t lineBuf[BLIT_ROWS * DISPLAY_PANEL_W];
 
 /* --- where the picture goes on the panel -------------------------
  *
@@ -206,9 +210,12 @@ extern "C" void display_write_picture(short srcX, short srcY, short width, short
     tft.startWrite();
     tft.setAddrWindow(destX0(), first, dw, last - first);
 
+    int held = 0;                      /* rows converted but not yet sent */
     for (int d = first; d < last; d++) {
+        uint16_t *out = lineBuf + (size_t)held * dw;
+
         if (!buffer) {
-            for (int i = 0; i < dw; i++) lineBuf[i] = bgColor;
+            for (int i = 0; i < dw; i++) out[i] = bgColor;
         } else {
             /* At 1.5x every third destination row and column repeats the
              * one before it. On a text screen that shows as slightly
@@ -220,12 +227,17 @@ extern "C" void display_write_picture(short srcX, short srcY, short width, short
             if (rel >= height) rel = height - 1;
             const uint8_t *row = buffer + (size_t)rel * width;
             if (sScale == 1)
-                for (int x = 0; x < dw; x++) lineBuf[x] = palette[row[x]];
+                for (int x = 0; x < dw; x++) out[x] = palette[row[x]];
             else
-                for (int x = 0; x < dw; x++) lineBuf[x] = palette[row[(x * 2) / 3]];
+                for (int x = 0; x < dw; x++) out[x] = palette[row[(x * 2) / 3]];
         }
-        tft.pushPixels(lineBuf, dw);
+
+        if (++held == BLIT_ROWS) {
+            tft.pushPixels(lineBuf, dw * held);
+            held = 0;
+        }
     }
+    if (held) tft.pushPixels(lineBuf, dw * held);
 
     tft.endWrite();
     sBlitUs += micros() - t0;

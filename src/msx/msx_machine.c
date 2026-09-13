@@ -15,7 +15,7 @@
 #include "display.h"
 
 void msx_prof_report(unsigned long *videoUs, unsigned long *soundUs,
-                     unsigned long *frames);
+                     unsigned long *loopUs, unsigned long *frames);
 
 static int  m_prealloc(void)      { return msx_video_prealloc(); }
 static void m_run(void)           { msx_keys_init(); msx_run(); }
@@ -99,15 +99,21 @@ static int m_debug_command(const char *line) {
             return 1;
         case 'q': {
             /* Where a frame goes. The Z80 is rarely the answer. */
-            unsigned long v, snd, n, blit = display_blit_us();
-            msx_prof_report(&v, &snd, &n);
+            unsigned long v, snd, loop, n, blit = display_blit_us();
+            msx_prof_report(&v, &snd, &loop, &n);
             display_blit_us_reset();
             if (!n) { printf("cpu: nothing measured yet\n"); return 1; }
-            printf("video %5lu us/frame   (drawing scanlines)\n"
-                   "sound %5lu us/frame\n"
-                   "blit  %5lu us/frame   (pushing the picture to the panel)\n"
-                   "over %lu frames\n",
-                   v / n, snd / n, blit / n, n);
+            /* LoopZ80 runs once a scanline and holds everything fMSX does
+             * besides execute instructions - the VDP, the sprites, the
+             * sound, and the blit, which happens inside the line drawing.
+             * So the Z80 itself is what is left over. */
+            printf("per frame, over %lu frames:\n"
+                   "  fMSX per-scanline work %5lu us   (of which:)\n"
+                   "    drawing + blit       %5lu us\n"
+                   "      blit alone         %5lu us\n"
+                   "    sound                %5lu us\n"
+                   "  Z80 and everything else, by subtraction\n",
+                   n, loop / n, v / n, blit / n, snd / n);
             return 1;
         }
         default:

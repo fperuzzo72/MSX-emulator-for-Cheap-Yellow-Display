@@ -48,7 +48,7 @@ void TrashMachine(void) {
 #include "esp_timer.h"
 #include "msx_prof.h"
 
-static long long sProf[2];
+static long long sProf[3];
 static long long sProfFrames;
 
 long long msx_prof_now(void) { return esp_timer_get_time(); }
@@ -57,11 +57,12 @@ void msx_prof(int slot, long long since) {
 }
 
 void msx_prof_report(unsigned long *videoUs, unsigned long *soundUs,
-                     unsigned long *frames) {
+                     unsigned long *loopUs, unsigned long *frames) {
     *frames  = (unsigned long)sProfFrames;
     *videoUs = (unsigned long)sProf[0];
     *soundUs = (unsigned long)sProf[1];
-    sProf[0] = sProf[1] = sProfFrames = 0;
+    *loopUs  = (unsigned long)sProf[2];
+    sProf[0] = sProf[1] = sProf[2] = sProfFrames = 0;
 }
 
 void Keyboard(void) {
