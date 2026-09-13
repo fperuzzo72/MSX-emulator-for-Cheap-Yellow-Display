@@ -173,10 +173,23 @@ make -C tools/tapebench
 TRAP=0 ./tools/tapebench/load 48.rom game.tap   # signal only, no shortcut
 ```
 
-Measured over the 30 tapes in this build: **28 load with both mechanisms,
-26 with the signal alone.** Avalon and Thrust load with neither. Run this
-before believing anything about tape changes - reasoning about pulse
-timings on the device is how a week disappears.
+Measured over the 30 tapes: **28 load with both mechanisms, 26 with the
+signal alone.** Avalon and Thrust load with neither. Run this before
+believing anything about tape changes - reasoning about pulse timings on
+the device is how a week disappears.
+
+### Which is why the firmware ships snapshots, not tapes
+
+`tools/tapes_to_snaps.sh` runs that same bench over a directory of tapes,
+snapshots each game once it has loaded, and verifies the snapshot by
+restoring it into a fresh machine. The firmware carries the results: 28
+snapshots, plus the two tapes that would not convert. **Do not build a
+game in twice** - a tape and a snapshot of the same game is a megabyte of
+flash for nothing, and flash is 84% full.
+
+The tape code stays because the conversion needs it, because Avalon and
+Thrust still ride on it, and because it is the only honest way to load a
+tape a user supplies later.
 
 ## Licensing (do not relax this casually)
 

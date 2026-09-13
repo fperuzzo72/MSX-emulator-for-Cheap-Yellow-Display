@@ -29,34 +29,52 @@ running, against the 60 a real MSX manages; see "Speed" below.
 
 **Spectrum:** memory map, ULA video with the interleaved display file and
 attribute colours, the 8x5 keyboard matrix through port 0xFE, a 50Hz IM1
-frame, `.sna` snapshots, and **`.tap` tapes that load** - thirty of them
-built in. No contention, and the beeper is read but not sounded.
+frame, `.tap` tapes that load, and twenty-eight games built in as
+snapshots so they start instantly. No contention, and the beeper is read
+but not sounded.
 
 **Both:** a picture scale toggle (1:1 or 1.5x), and a selector you reach
 by holding a finger on the screen, to change cartridge or tape without
 rebooting.
 
-## Tapes, and why loading one can take five minutes
+## Tapes: loaded once, here, not on the board
 
 A `.tap` is played **as a signal**: a pulse train on bit 6 of port 0xFE,
 standard timings, which is what a game's own loader expects. It is also
 handed over **whole** whenever the ROM's LD-BYTES asks for a block, which
-is instant. Games that load through the ROM come up in seconds; games that
-brought their own loader take as long as the tape did, because the tape is
-what they are reading. Nebulus is 273 seconds of tape. That is not a hang,
-and `y` on the serial console says how far along it is.
+is instant. Both are needed - the shortcut alone leaves Nebulus stuck at
+block four forever, and the signal alone takes as long as the tape did,
+which for Nebulus is 273 seconds.
 
-`tools/tapebench` runs the tape code on your own machine against the real
-Z80 and a real ROM, and gets through a three-minute tape in under a
+So the tapes are loaded **on your own machine instead**, once, and what
+gets built into the firmware is the loaded game:
+
+```bash
+tools/tapes_to_snaps.sh 48.rom roms/spectrum roms/spectrum-snaps
+```
+
+That boots a Spectrum on the host, types `LOAD ""`, waits for the load,
+writes the memory out as a `.sna` and then puts the snapshot back into a
+fresh machine to check the game really is in it. Twenty-eight of the
+thirty tapes here convert; Avalon and Thrust do not, so they stay as
+tapes. Nothing is carried twice.
+
+It is worth saying what this buys: Nebulus went from five minutes of blank
+screen to appearing at once. The tape code is still there and still
+correct, and `y` on the serial console reports how far a tape has got -
+because a tape loading and a machine hung look identical, which cost a day
+here.
+
+`tools/tapebench` is the same machinery on its own, for debugging tape
+changes without a board. It gets through a three-minute tape in under a
 second:
 
 ```bash
 make -C tools/tapebench
-./tools/tapebench/load 48.rom game.tap
+./tools/tapebench/load   48.rom game.tap    # boot, LOAD "", did it come up
+./tools/tapebench/loader 48.rom game.tap    # will the ROM accept the signal
+TRAP=0 ./tools/tapebench/load 48.rom game.tap   # signal only, no shortcut
 ```
-
-Twenty-eight of the thirty tapes here load under it. Avalon and Thrust do
-not.
 
 ## The layout of this repo
 
@@ -222,15 +240,15 @@ itself. See `docs/DISPLAY.md`.
 
 ## Known limitations
 
-- **Tape loading is slow** when the game brings its own loader, because
-  it is reading a tape. See above.
+- **Tape loading on the board is slow** when the game brings its own
+  loader, because it is reading a tape. Convert it instead; see above.
 - **Speed**, above.
 - **No speaker on the board**, so sound is untested by ear.
 - **The SD card is not mounted at boot.** It costs about 45kB, which with
   a card in the slot left the emulated VRAM twelve bytes short of fitting.
   `m 1` on the console mounts it. Loading ROMs from the card, and anything
   MSX-DOS shaped, has to solve that properly first.
-- **Avalon and Thrust do not load**, and it is not known why.
+- **Avalon and Thrust do not load** at all, and it is not known why.
 - **No joystick, no floppy**, and no Spectrum beeper.
 
 ## Licensing (this matters if you do anything beyond personal hobby use)

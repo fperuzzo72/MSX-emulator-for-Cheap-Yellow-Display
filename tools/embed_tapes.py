@@ -3,9 +3,11 @@
 
   python3 tools/embed_tapes.py src/spectrum/spectrum_tape_data.c roms/spectrum
 
-Every .tap in the directory is taken, named after the file. They are
-loaded by trapping the ROM's LD-BYTES routine, so standard-speed blocks
-only - which is what .tap holds.
+Every .tap in the directory is taken, named after the file.
+
+Prefer snapshots: tools/tapes_to_snaps.sh converts a tape into a .sna that
+starts instantly, and a tape only earns its place in the firmware when the
+conversion fails. Keeping both wastes flash on the same game twice.
 
 The generated file is gitignored. Nothing is distributed with this project;
 these came from World of Spectrum, from publishers recorded there as having
