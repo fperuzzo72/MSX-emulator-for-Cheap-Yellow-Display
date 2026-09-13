@@ -102,14 +102,26 @@ rest of fMSX and is MSX-only, excluded from the Spectrum build by
 
 ## Known open items / likely next requests
 
-1. **Speed.** ~42 fps at 1:1 and ~25-33 fps at the 1.5x scale, against
-   the 60 a real MSX runs at. Because fMSX paces the Z80 against the
-   frame, that is the whole machine running slow, not just a late picture.
-   The blit is synchronous on the emulation task since the video layer
-   went to a band buffer. Two ways back: overlap it with DMA (a first
-   attempt with `pushPixelsDMA` and two line buffers put a flashing white
-   screen up and was reverted), or give the blit its own task again and
-   pay one more band of RAM. See docs/DISPLAY.md.
+1. **Speed.** Largely solved, and not where anyone was looking.
+
+   **Measure before touching this**: `q` on the serial console splits a
+   frame into its parts on both machines. The emulated Z80 runs at 9.1MHz,
+   260% of a real Spectrum, and never was the bottleneck. What was: a
+   `getTouch()` call once per frame, costing **12.6ms of a 23ms frame**,
+   because TFT_eSPI debounces pressure in a loop with a `delay(1)` in it
+   and an untouched resistive panel is noisy. The hold gesture now reads
+   `getTouchRawZ()` instead, at 45us. Spectrum went 43 -> 98 fps, MSX
+   15.3 -> 21.8 at 1.5x and 31.7 at 1:1.
+
+   What is left is the panel. The MSX blit is 13.3ms at 1:1 against 9.8ms
+   of unavoidable wire time (786kbit at 80MHz), and it is serialised with
+   the emulation. Overlapping them would cap a frame at the larger rather
+   than their sum. A first attempt with `pushPixelsDMA` and two line
+   buffers put a flashing white screen up and was reverted; the other way
+   is to give the blit its own task, which needs one more band of RAM -
+   halving FB_BAND_LINES to 12 and keeping two of them is RAM-neutral.
+   **At 1.5x, 60fps is arithmetically impossible on this bus**: 110,592
+   pixels 60 times a second is 106Mbit/s and the bus carries 80.
 2. **Nobody has heard the sound.** `InitSound()` reports 22050Hz,
    `PlayAllSound()` feeds `RenderAndPlayAudio()` into the I2S built-in DAC
    (`src/audio_glue.c`), and `PLAY` runs without stalling the frame rate,

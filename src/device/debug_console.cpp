@@ -27,6 +27,7 @@
 #include "sd_mount.h"
 #include "machine.h"
 #include "selector.h"
+#include "panel.h"
 #include <esp_system.h>
 
 extern "C" {
@@ -211,6 +212,23 @@ static void handleLine(char *line) {
             selector_open();
             Serial.println("selector open on the panel - tap a row, or anywhere else to cancel");
             break;
+
+        case 'u': {
+            /* Touch pressure, once every 100ms for three seconds.
+             *
+             * Worth having: the hold-to-open gesture now reads pressure
+             * directly rather than calling getTouch(), because getTouch()
+             * cost half of every frame. Anything at or above 600 counts as
+             * a finger, which is the threshold TFT_eSPI itself uses. Press
+             * the glass while this runs and watch the number. */
+            Serial.println("touch pressure for 3s - press the screen (600+ is a finger)");
+            for (int i = 0; i < 30; i++) {
+                uint16_t z = panel_tft().getTouchRawZ();
+                Serial.printf("  z %4u%s\n", z, z >= 600 ? "   <- finger" : "");
+                delay(100);
+            }
+            break;
+        }
 
         case 'e': {
             /* Same choice the boot menu offers, for when there is a cable

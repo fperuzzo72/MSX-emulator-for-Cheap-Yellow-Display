@@ -42,13 +42,25 @@ int selector_active(void) { return sActive ? 1 : 0; }
  * which matters because the picture moves around with the scale. */
 #define HOLD_MS 900
 
+/* How hard counts as a finger. TFT_eSPI's own getTouch() uses 600 as its
+ * default and this is the same reading, taken directly. */
+#define TOUCH_Z 600
+
 void selector_poll_open(void) {
     static uint32_t downSince;
-    uint16_t tx, ty;
 
     if (sActive) return;
 
-    if (!panel_tft().getTouch(&tx, &ty)) { downSince = 0; return; }
+    /* Pressure only, never getTouch().
+     *
+     * This runs once per emulated frame, and getTouch() costs 12.6ms of a
+     * 23ms frame - measured, and it was more than half the machine. The
+     * cost is TFT_eSPI's debounce: it re-reads pressure until the reading
+     * stops rising, with a delay(1) each time round, and an untouched
+     * resistive panel gives it noise to chase. Reading Z once is a few
+     * microseconds and is all a hold needs, because where the finger is
+     * does not matter here - only that it stayed. */
+    if (panel_tft().getTouchRawZ() < TOUCH_Z) { downSince = 0; return; }
 
     if (!downSince) { downSince = millis(); return; }
     if (millis() - downSince >= HOLD_MS) {

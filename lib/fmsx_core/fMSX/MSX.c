@@ -14,6 +14,9 @@
 /*************************************************************/
 
 #include "MSX.h"
+/* NOT UPSTREAM: this port's frame profiler, implemented in
+ * src/msx/platform_glue.c. Compiled away to nothing when it is off. */
+#include "msx_prof.h"
 #include "Sound.h"
 #include "Floppy.h"
 #include "SHA1.h"
@@ -2219,18 +2222,26 @@ word LoopZ80(Z80 *R)
   LoopVDP();
 
   /* Refresh scanline, possibly with the overscan */
-  if((UCount>=100)&&Drawing&&(ScanLine<256))
+  /* NOT UPSTREAM: the two msx_prof calls are this port's profiler, so the
+   * cost of drawing a line can be told apart from the cost of running the
+   * Z80. See src/msx/platform_glue.c and the 'q' console command. */
   {
-    if(!ModeYJK||(ScrMode<7)||(ScrMode>8))
-      (RefreshLine[ScrMode])(ScanLine);
-    else
-      if(ModeYAE) RefreshLine10(ScanLine);
-      else RefreshLine12(ScanLine);
+    long long profT0 = msx_prof_now();
+    if((UCount>=100)&&Drawing&&(ScanLine<256))
+    {
+      if(!ModeYJK||(ScrMode<7)||(ScrMode>8))
+        (RefreshLine[ScrMode])(ScanLine);
+      else
+        if(ModeYAE) RefreshLine10(ScanLine);
+        else RefreshLine12(ScanLine);
+    }
+    msx_prof(MSX_PROF_VIDEO, profT0);
   }
 
   /* Every few scanlines, update sound */
   if(!(ScanLine&0x07))
   {
+    long long profSnd = msx_prof_now();   /* NOT UPSTREAM: see above */
     /* Compute number of microseconds */
     J = (int)(1000000L*(CPU_HPERIOD<<3)/CPU_CLOCK);
 
@@ -2244,6 +2255,7 @@ word LoopZ80(Z80 *R)
 
     /* Render and play all sound now */
     PlayAllSound(J);
+    msx_prof(MSX_PROF_SOUND, profSnd);    /* NOT UPSTREAM: see above */
   }
 
   /* Keyboard, sound, and other stuff always runs at line 192    */

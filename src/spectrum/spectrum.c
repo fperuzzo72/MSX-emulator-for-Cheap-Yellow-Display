@@ -57,6 +57,8 @@ static volatile unsigned long sFrames;
 static int sSoundOn = 1;
 static int64_t sNextFrameUs;
 static unsigned long sAutoloadAt;
+static unsigned long sCpuUs, sCpuFrames;
+static unsigned long sRenderUs, sTouchUs, sFrameUs;
 
 /* One band of the picture, the same trick the MSX side uses: a whole
  * 256x192 8bpp frame would be 48kB and this board has no PSRAM. */
@@ -223,6 +225,7 @@ static void runFrame(void) {
     static int flashCounter, flashPhase;
     int y;
 
+    int64_t tFrame0 = esp_timer_get_time();
     display_service();
 
     /* The selector owns the panel and the machine stands still under it. */
@@ -239,7 +242,11 @@ static void runFrame(void) {
         return;
     }
 
-    selector_poll_open();
+    {
+        int64_t t0 = esp_timer_get_time();
+        selector_poll_open();
+        sTouchUs += (unsigned long)(esp_timer_get_time() - t0);
+    }
 
     if (display_take_repaint()) { sLastBorder = 0xFF; markAll(); spectrum_help_invalidate(); }
     spectrum_help_draw();
@@ -262,10 +269,12 @@ static void runFrame(void) {
      * about the signal or the timing changes. Marks are left standing on
      * the frames that are skipped, so nothing is lost. */
     if (!spectrum_tape_playing() || (sFrames & 15) == 0) {
+        int64_t t0 = esp_timer_get_time();
         for (y = 0; y < 192; y++)
             if (sDirty[y / BAND_LINES]) renderLine(y, flashPhase);
         flushBand();
         memset(sDirty, 0, sizeof(sDirty));
+        sRenderUs += (unsigned long)(esp_timer_get_time() - t0);
     }
 
     /* The flash attribute swaps ink and paper twice a second, so every
@@ -283,7 +292,17 @@ static void runFrame(void) {
 
     spectrum_keys_frame();
 
-    ExecZ80(&sCPU, SPEC_FRAME_TSTATES);
+    {
+        /* How long the Z80 itself takes, which is the number that matters:
+         * a frame is 69888 T-states, so microseconds here convert straight
+         * into the megahertz this board emulates at. A real Spectrum is
+         * 3.5MHz; anything much under that and the machine runs slow no
+         * matter what the picture costs. */
+        int64_t t0 = esp_timer_get_time();
+        ExecZ80(&sCPU, SPEC_FRAME_TSTATES);
+        sCpuUs += (unsigned long)(esp_timer_get_time() - t0);
+        sCpuFrames++;
+    }
     IntZ80(&sCPU, INT_IRQ);      /* IM1: 50Hz maskable interrupt */
 
     sFrames++;
@@ -296,6 +315,8 @@ static void runFrame(void) {
      * feeds the watchdog and leaves the other core alone. If a frame
      * overruns, the deadline is reset rather than carried forward, so a
      * slow patch does not turn into a sprint afterwards. */
+    sFrameUs += (unsigned long)(esp_timer_get_time() - tFrame0);
+
     if (spectrum_tape_playing()) {
         /* The tape is turning: run flat out and let the loading finish. */
         sNextFrameUs = 0;
@@ -490,9 +511,30 @@ static void m_set_sound(int on) { sSoundOn = on ? 1 : 0; }
 static int  m_sound_on(void)    { return sSoundOn; }
 
 static const char *m_debug_help(void) {
-    return "  y                      tape status: blocks served, where the CPU is";
+    return "  y                      tape status: blocks served, where the CPU is\n"
+           "  q                      Z80 speed since the last q, in emulated MHz";
 }
 static int m_debug_command(const char *line) {
+    if (line[0] == 'q') {
+        /* Z80 speed, measured rather than assumed. */
+        unsigned long us = sCpuUs, n = sCpuFrames;
+        unsigned long rend = sRenderUs, touch = sTouchUs, frame = sFrameUs;
+        unsigned long blit = display_blit_us();
+        sCpuUs = sCpuFrames = sRenderUs = sTouchUs = sFrameUs = 0;
+        display_blit_us_reset();
+        if (!n || !us) { printf("cpu: nothing measured yet\n"); return 1; }
+        printf("cpu   %5lu us/frame  %.2f MHz emulated, %.0f%% of a real Spectrum\n"
+               "draw  %5lu us/frame  (of which %lu blit)\n"
+               "touch %5lu us/frame\n"
+               "frame %5lu us/frame  = %.1f fps, %lu us unaccounted\n",
+               us / n, (double)SPEC_FRAME_TSTATES * n / us,
+               100.0 * SPEC_FRAME_TSTATES * n / us / 3.5,
+               rend / n, blit / n,
+               touch / n,
+               frame / n, 1000000.0 * n / frame,
+               (frame - us - rend - touch) / n);
+        return 1;
+    }
     if (line[0] == 'y') {
         printf("tape: %d%% through, %s, block %d, PC %04X SP %04X\n",
                spectrum_tape_progress(),

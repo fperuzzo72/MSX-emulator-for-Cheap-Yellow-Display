@@ -211,21 +211,45 @@ spent a day proving exactly that. Read the screen *and* look at the panel.
 
 ## Speed
 
-Measured on the device, running a 32kB SCREEN 2 game:
+Measured on the device with `q` on the serial console, which is worth
+reading before optimising anything here, because the answer was not what
+anyone expected.
 
-| | fps | blit |
+**The emulated Z80 was never the problem.** It runs at **9.1MHz**, which
+is 260% of a real Spectrum. What cost half of every frame was reading the
+touchscreen: TFT_eSPI's `getTouch()` debounces by re-reading pressure
+until it stops rising, with a `delay(1)` each time round, and an untouched
+resistive panel gives it noise to chase. Once per frame, that was **12.6ms
+of a 23ms frame**. Reading the pressure register directly costs 45µs and
+is all a hold gesture needs.
+
+| Spectrum, per frame | before | after |
 |---|---|---|
-| 1:1, sound on | 20.9 | 13.3 ms of a 47.8 ms frame |
-| 1:1, sound off | 22.9 | 13.2 ms of a 43.7 ms frame |
-| 1.5x, sound on | 15.3 | 31.1 ms of a 65.4 ms frame |
-| 1.5x, sound off | 16.5 | 30.6 ms of a 60.6 ms frame |
+| Z80 | 7.7 ms | 7.7 ms |
+| drawing (2.4 ms of it the blit) | 2.7 ms | 2.6 ms |
+| touchscreen | **12.6 ms** | **0.045 ms** |
+| whole frame | 23.2 ms, 43 fps | 10.2 ms, **98 fps** |
 
-Sound costs about 2 fps. The blit is a third of the frame at 1:1 and half
-of it at 1.5x, and it is serialised with the emulation because the band
-buffer put it on the same task. Overlapping the two would cap a frame at
-the larger rather than their sum: roughly 33 fps at 1:1, and close to
-double the current rate at 1.5x. Past that the limit is the emulation
-itself. See `docs/DISPLAY.md`.
+The Spectrum is now paced down to 50fps with the machine half idle. The
+MSX, which draws more, went from 15.3 to 21.8 fps at 1.5x and to **31.7
+fps at 1:1**.
+
+What limits the MSX now is the panel, not the emulator:
+
+| MSX at 1:1, per frame | |
+|---|---|
+| blit (pushing pixels over SPI) | 13.3 ms |
+| converting them | 1.4 ms |
+| sound | 0.7 ms |
+| Z80, VDP and the rest of fMSX | ~16 ms |
+
+13.3ms is close to what the wire costs: 256x192 pixels at 16 bits is
+786kbit, and the bus runs at 80MHz, so 9.8ms of it is unavoidable. At 1.5x
+the picture is 110,592 pixels and 60fps is **physically impossible** on
+this bus, whatever the emulator does. The remaining win is to overlap the
+blit with the emulation rather than doing them one after the other, which
+would cap a frame at the larger of the two instead of their sum. See
+`docs/DISPLAY.md`.
 
 ## Documents worth reading before changing things
 

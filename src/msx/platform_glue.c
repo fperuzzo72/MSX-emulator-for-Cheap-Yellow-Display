@@ -43,7 +43,29 @@ void TrashMachine(void) {
 /** BLE connection and hands over the latest HID report;        */
 /** msx_keys_frame() turns that into this machine's matrix.     */
 /*****************************************************************/
+/* ---- the frame profiler, see lib/fmsx_core/fMSX/msx_prof.h ---- */
+
+#include "esp_timer.h"
+#include "msx_prof.h"
+
+static long long sProf[2];
+static long long sProfFrames;
+
+long long msx_prof_now(void) { return esp_timer_get_time(); }
+void msx_prof(int slot, long long since) {
+    sProf[slot] += esp_timer_get_time() - since;
+}
+
+void msx_prof_report(unsigned long *videoUs, unsigned long *soundUs,
+                     unsigned long *frames) {
+    *frames  = (unsigned long)sProfFrames;
+    *videoUs = (unsigned long)sProf[0];
+    *soundUs = (unsigned long)sProf[1];
+    sProf[0] = sProf[1] = sProfFrames = 0;
+}
+
 void Keyboard(void) {
+    sProfFrames++;
     /* First frame: the machine is up and everything it needed off the heap
      * is claimed, so whatever else wants a big block (the BLE stack) can
      * stop waiting. */

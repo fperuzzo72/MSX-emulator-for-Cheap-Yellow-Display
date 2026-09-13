@@ -12,6 +12,10 @@
 #include "msx_keys.h"
 #include "msx_carts.h"
 #include "selector.h"
+#include "display.h"
+
+void msx_prof_report(unsigned long *videoUs, unsigned long *soundUs,
+                     unsigned long *frames);
 
 static int  m_prealloc(void)      { return msx_video_prealloc(); }
 static void m_run(void)           { msx_keys_init(); msx_run(); }
@@ -63,7 +67,8 @@ static int  m_selected_entry(void) { return msx_cart_selected() + 1; }
 static const char *m_debug_help(void) {
     return "  d <n> <shift> <char>   press dead key n then a character\n"
            "  p <row> <bit> <mods>   press one matrix position (1 Shift, 2 Ctrl)\n"
-           "  c [n]                  list cartridges, or select one and reboot";
+           "  c [n]                  list cartridges, or select one and reboot\n"
+           "  q                      where a frame's time goes";
 }
 
 static int m_debug_command(const char *line) {
@@ -92,6 +97,19 @@ static int m_debug_command(const char *line) {
                 msx_cart_list();
             }
             return 1;
+        case 'q': {
+            /* Where a frame goes. The Z80 is rarely the answer. */
+            unsigned long v, snd, n, blit = display_blit_us();
+            msx_prof_report(&v, &snd, &n);
+            display_blit_us_reset();
+            if (!n) { printf("cpu: nothing measured yet\n"); return 1; }
+            printf("video %5lu us/frame   (drawing scanlines)\n"
+                   "sound %5lu us/frame\n"
+                   "blit  %5lu us/frame   (pushing the picture to the panel)\n"
+                   "over %lu frames\n",
+                   v / n, snd / n, blit / n, n);
+            return 1;
+        }
         default:
             return 0;
     }
