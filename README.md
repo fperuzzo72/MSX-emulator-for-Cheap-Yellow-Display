@@ -231,25 +231,38 @@ is all a hold gesture needs.
 | whole frame | 23.2 ms, 43 fps | 10.2 ms, **98 fps** |
 
 The Spectrum is now paced down to 50fps with the machine half idle. The
-MSX, which draws more, went from 15.3 to 21.8 fps at 1.5x and to **31.7
-fps at 1:1**.
+MSX, which draws far more, went from 22.5 to **33 fps at 1:1** and from
+15.3 to about 21 at 1.5x, with sound on in both cases.
 
 What limits the MSX now is the panel, not the emulator:
 
 | MSX at 1:1, per frame | |
 |---|---|
-| blit (pushing pixels over SPI) | 13.3 ms |
-| converting them | 1.4 ms |
-| sound | 0.7 ms |
-| Z80, VDP and the rest of fMSX | ~16 ms |
+| blit (pushing pixels over SPI) | 13.0 ms |
+| drawing the scanlines | 1.4 ms |
+| sound | 0.6 ms |
+| Z80 and the rest of fMSX | ~15 ms |
 
-13.3ms is close to what the wire costs: 256x192 pixels at 16 bits is
-786kbit, and the bus runs at 80MHz, so 9.8ms of it is unavoidable. At 1.5x
-the picture is 110,592 pixels and 60fps is **physically impossible** on
-this bus, whatever the emulator does. The remaining win is to overlap the
-blit with the emulation rather than doing them one after the other, which
-would cap a frame at the larger of the two instead of their sum. See
-`docs/DISPLAY.md`.
+13ms is close to what the wire costs: 256x192 pixels at 16 bits is
+786kbit and the bus runs at 80MHz, so 9.8ms of it cannot be avoided. At
+1.5x the picture is 110,592 pixels, which needs 106Mbit/s, so **60fps at
+1.5x is arithmetically impossible on this bus** whatever the emulator
+does.
+
+Two things were tried past this point and **both made it slower**, which
+is worth knowing before trying them again:
+
+- **DMA per scanline** (two line buffers, `pushPixelsDMA`): the MSX blit
+  went from 13.3ms to 20ms. A line is 512 to 768 bytes and TFT_eSPI's
+  per-transfer setup costs more than the conversion it saves.
+- **The blit on its own task**, overlapping the emulation, with two
+  12-line bands costing the same RAM as one 24-line band: 31.7 fps became
+  26.8, the blit itself went from 13.2ms to 32.1ms, and free heap fell to
+  300 bytes. Two cores running flat out contend for flash and DRAM by
+  more than the overlap wins.
+
+What did help was pushing two rows per SPI call instead of one, which
+spreads the per-call cost over twice the wire for 960 bytes of buffer.
 
 ## Documents worth reading before changing things
 

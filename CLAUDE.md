@@ -113,15 +113,35 @@ rest of fMSX and is MSX-only, excluded from the Spectrum build by
    `getTouchRawZ()` instead, at 45us. Spectrum went 43 -> 98 fps, MSX
    15.3 -> 21.8 at 1.5x and 31.7 at 1:1.
 
-   What is left is the panel. The MSX blit is 13.3ms at 1:1 against 9.8ms
-   of unavoidable wire time (786kbit at 80MHz), and it is serialised with
-   the emulation. Overlapping them would cap a frame at the larger rather
-   than their sum. A first attempt with `pushPixelsDMA` and two line
-   buffers put a flashing white screen up and was reverted; the other way
-   is to give the blit its own task, which needs one more band of RAM -
-   halving FB_BAND_LINES to 12 and keeping two of them is RAM-neutral.
-   **At 1.5x, 60fps is arithmetically impossible on this bus**: 110,592
-   pixels 60 times a second is 106Mbit/s and the bus carries 80.
+   What is left is the panel. The MSX blit is 13ms at 1:1 against 9.8ms of
+   unavoidable wire time (786kbit at 80MHz). **At 1.5x, 60fps is
+   arithmetically impossible on this bus**: 110,592 pixels 60 times a
+   second is 106Mbit/s and the bus carries 80.
+
+   **Two things past this were tried and measured slower. Do not redo
+   them without reading this.**
+
+   - *DMA per scanline*, two line buffers and `pushPixelsDMA`: blit
+     13.3ms -> 20ms. A line is 512-768 bytes and TFT_eSPI's per-transfer
+     setup costs more than the conversion it overlaps. (An earlier attempt
+     also put a flashing white screen up. That was a buffer-reuse bug; the
+     slowness is real and survives fixing it.)
+   - *The blit on its own task*, pinned to core 0, with two 12-line bands
+     costing the same RAM as one 24-line band: 31.7 fps -> 26.8, and the
+     blit itself 13.2ms -> 32.1ms. Two cores running flat out contend for
+     flash cache and DRAM by more than the overlap wins, and the MSX was
+     left with 300 bytes of heap. The deadlock it started with is worth
+     remembering too: draining the queue by taking every band permit can
+     never succeed, because the renderer always holds one.
+
+   What did work: pushing `BLIT_ROWS` rows per `pushPixels` call rather
+   than one. Two is the sweet spot - four gains 0.4 fps more and costs 2kB
+   that the BLE keyboard needs.
+
+   Where the MSX time still goes: ~15ms of fMSX a frame against ~7.7ms for
+   the same Z80 core on the Spectrum. fMSX runs `RunZ80` with a scanline
+   IPeriod, and its RdZ80/WrZ80 carry slot and mapper checks. That is the
+   next real target, and it is inside vendored code.
 2. **Nobody has heard the sound.** `InitSound()` reports 22050Hz,
    `PlayAllSound()` feeds `RenderAndPlayAudio()` into the I2S built-in DAC
    (`src/audio_glue.c`), and `PLAY` runs without stalling the frame rate,
