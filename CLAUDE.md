@@ -134,32 +134,49 @@ rest of fMSX and is MSX-only, excluded from the Spectrum build by
    ESP32-D0WD-V3 with no embedded PSRAM and 4MB of flash. The whole memory
    budget in docs/MEMORY.md is built on that.
 
-## The Spectrum tape, and why it is only half solved
+## The Spectrum tape: two mechanisms, and why both are needed
 
-A `.tap` is loaded by trapping the ROM's own LD-BYTES at 0x0556 and
-handing over the next block whole (`src/spectrum/spectrum_tape.c`). The
-trap is an opcode planted in the ROM, and this machine's ROM runs from
-flash, so loading a tape first copies the ROM into RAM and patches the
-copy - that is what `spectrum_tape_rom()` is for.
+`src/spectrum/spectrum_tape.c` plays a `.tap` **as a signal** - bit 6 of
+port 0xFE driven from a generated pulse train, standard timings - and also
+**traps the ROM's LD-BYTES at 0x0556** and hands over whole blocks when the
+tape is sitting at the start of one. Neither alone is enough:
 
-This works for any game that loads through the ROM and **only** for those.
-Measured: Halls of the Things loads all 3 blocks and runs. Nebulus takes 4
-blocks and stops at PC 0x05EE, because by then its own turbo loader has
-taken over and never calls LD-BYTES again. Most commercial tapes past 1985
-are in that second group.
+- The trap is instant but only serves loaders that call the ROM. Nebulus
+  brought its own and stopped at block 4 forever.
+- The signal serves any loader, correctly, but at tape speed - and tape
+  speed is real: Halls of the Things is 148 seconds of tape and Nebulus
+  273, measured off the `.tap`. This board runs the Z80 at about 0.9 of a
+  real Spectrum, so a signal-only load of Nebulus is five minutes with a
+  blank screen. **That looks exactly like a hang and is not one**; it cost
+  a day here before `spectrum_tape_progress()` existed to tell them apart.
 
-The real fix is to stop faking the loader and emulate the signal: drive
-bit 6 of port 0xFE from a generated pulse train and let whatever loader
-the game brought read it. That was attempted and **does not work yet** -
-kept in `src/spectrum/spectrum_tape_pulses.c.wip`, outside the build. The
-decisive measurement, worth not repeating: with pulses, Halls of the
-Things - which the ROM loader alone loads end to end - came back at 7
-restarted blocks with PC inside LD-BYTES and a blank screen. So the fault
-is in the pulse generation or its timing, not in anyone's custom loader.
-Suspects, in order: the level/edge semantics of `spectrum_tape_ear()`, the
-PAUSE-to-PILOT transition, and the motor-idle-stop path resetting the next
-edge. The clock is not a suspect: `ExecZ80` does set and decrement
-`ICount`, so frames*69888 + (69888 - ICount) is sound.
+So the trap takes the blocks the ROM asks for and the signal takes the
+rest. The trap is disarmed for good the moment a loader is caught reading
+mid-block, because from then on it is in charge.
+
+The trap plants an opcode, which needs the ROM in RAM: `spectrum.c` copies
+it there at startup (16kB) and `spectrum_rom_writable()` hands the copy
+over. Without the copy everything still works, only slowly. The copy is
+also about 7% faster than executing from flash, which was measured and is
+not why it is there.
+
+### tools/tapebench - test this without the board
+
+The whole thing compiles on the host against the real `spectrum_tape.c`,
+the real `lib/z80`, and a real ROM. It runs a three-minute tape in under a
+second, which is the only reason any of this got debugged.
+
+```bash
+make -C tools/tapebench
+./tools/tapebench/loader 48.rom game.tap   # will the ROM loader accept the signal
+./tools/tapebench/load   48.rom game.tap   # boot, type LOAD "", does the game come up
+TRAP=0 ./tools/tapebench/load 48.rom game.tap   # signal only, no shortcut
+```
+
+Measured over the 30 tapes in this build: **28 load with both mechanisms,
+26 with the signal alone.** Avalon and Thrust load with neither. Run this
+before believing anything about tape changes - reasoning about pulse
+timings on the device is how a week disappears.
 
 ## Licensing (do not relax this casually)
 

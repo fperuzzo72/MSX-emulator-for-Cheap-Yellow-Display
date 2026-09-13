@@ -6,35 +6,57 @@ Emulator firmware for the Freenove FNK0103 3.5" ESP32 display board, the
 "Cheap Yellow Display" with the ST7796 panel, driven by a Bluetooth Low
 Energy keyboard rather than the touchscreen.
 
-One tree, one board, **two firmwares**:
+One tree, one board, **two machines**:
 
-| | machine | status |
-|---|---|---|
-| `pio run -e msx` | MSX1, an Epcom **Hotbit HB-8000** | running on hardware |
-| `pio run -e spectrum` | **ZX Spectrum 48K** | written, never run |
+| | |
+|---|---|
+| `pio run -e cyd` | both, chosen from a menu when the board powers up |
+| `pio run -e msx` | MSX1, an Epcom **Hotbit HB-8000**, on its own |
+| `pio run -e spectrum` | **ZX Spectrum 48K**, on its own |
 
-Be careful with that second row. The Spectrum is new code that has never
-executed: there is no Spectrum ROM on this machine to run it with, and the
-board was unplugged when it was written. It compiles, and that is all
-anyone can honestly claim for it today. The MSX side, by contrast, boots a
-real Hotbit into MSX-BASIC with sound, types accented Portuguese from a
-BLE keyboard, and runs cartridges.
+Both run on the hardware. The boot menu picks the machine *and* what it
+starts with - a cartridge, a snapshot, a tape - and everything is in
+flash, so there is no SD card in any of this.
 
 ## Status, in detail
 
-**MSX (verified on the device):** boots a dumped Hotbit HB-8000 BIOS into
-MSX-BASIC with no SD card, because the BIOS is built into the firmware.
-Sound is generated and reaches the amplifier. A BLE keyboard pairs and
-types, with US-International dead keys composing á ã â é ê ó ô ú ç and the
-rest. A 32kB cartridge built into the firmware boots and plays. Speed is
-20-30 fps depending on the picture scale and what is running, against the
-60 a real MSX manages; see "Speed" below.
+**MSX:** boots a dumped Hotbit HB-8000 BIOS into MSX-BASIC. Sound is
+generated and reaches the amplifier. A BLE keyboard pairs and types, with
+US-International dead keys composing á ã â é ê ó ô ú ç and the rest.
+Twenty-one cartridges are built in, MegaROMs included, with the Konami
+mapper. Speed is 20-30 fps depending on the picture scale and what is
+running, against the 60 a real MSX manages; see "Speed" below.
 
-**Spectrum (compiles, unrun):** memory map, ULA video with the interleaved
-display file and attribute colours, the 8x5 keyboard matrix through port
-0xFE, and a 50Hz IM1 frame. No contention, no tape, and the beeper is read
-but not yet sounded. Supply a ROM and it may well come up; nobody has
-tried.
+**Spectrum:** memory map, ULA video with the interleaved display file and
+attribute colours, the 8x5 keyboard matrix through port 0xFE, a 50Hz IM1
+frame, `.sna` snapshots, and **`.tap` tapes that load** - thirty of them
+built in. No contention, and the beeper is read but not sounded.
+
+**Both:** a picture scale toggle (1:1 or 1.5x), and a selector you reach
+by holding a finger on the screen, to change cartridge or tape without
+rebooting.
+
+## Tapes, and why loading one can take five minutes
+
+A `.tap` is played **as a signal**: a pulse train on bit 6 of port 0xFE,
+standard timings, which is what a game's own loader expects. It is also
+handed over **whole** whenever the ROM's LD-BYTES asks for a block, which
+is instant. Games that load through the ROM come up in seconds; games that
+brought their own loader take as long as the tape did, because the tape is
+what they are reading. Nebulus is 273 seconds of tape. That is not a hang,
+and `y` on the serial console says how far along it is.
+
+`tools/tapebench` runs the tape code on your own machine against the real
+Z80 and a real ROM, and gets through a three-minute tape in under a
+second:
+
+```bash
+make -C tools/tapebench
+./tools/tapebench/load 48.rom game.tap
+```
+
+Twenty-eight of the thirty tapes here load under it. Avalon and Thrust do
+not.
 
 ## The layout of this repo
 
@@ -83,9 +105,9 @@ for cartridges.
 ## Building and flashing
 
 ```bash
-pio run                        # both machines
-pio run -e msx -t upload       # flash the MSX
-pio run -e spectrum -t upload  # flash the Spectrum
+pio run -e cyd -t upload       # both machines, menu at boot
+pio run -e msx -t upload       # the MSX on its own
+pio run -e spectrum -t upload  # the Spectrum on its own
 pio device monitor             # 115200
 ```
 
@@ -200,15 +222,16 @@ itself. See `docs/DISPLAY.md`.
 
 ## Known limitations
 
-- **The Spectrum has never run.** See the top of this file.
+- **Tape loading is slow** when the game brings its own loader, because
+  it is reading a tape. See above.
 - **Speed**, above.
 - **No speaker on the board**, so sound is untested by ear.
 - **The SD card is not mounted at boot.** It costs about 45kB, which with
   a card in the slot left the emulated VRAM twelve bytes short of fitting.
   `m 1` on the console mounts it. Loading ROMs from the card, and anything
   MSX-DOS shaped, has to solve that properly first.
-- **No cartridge browser**: the cartridge is the one built into flash.
-- **No joystick, no floppy, no tape.**
+- **Avalon and Thrust do not load**, and it is not known why.
+- **No joystick, no floppy**, and no Spectrum beeper.
 
 ## Licensing (this matters if you do anything beyond personal hobby use)
 

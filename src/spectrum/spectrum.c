@@ -43,6 +43,13 @@ static void m_switch_to(int entry);
 /* ---------------------------------------------------------------- */
 static Z80      sCPU;
 static uint8_t *sRAM;            /* 48kB, mapped at 0x4000 */
+static const uint8_t *sROM;      /* 16kB, from flash or a RAM copy of it */
+static uint8_t *sRomRam;         /* that copy, when there was room for it */
+
+/* The tape's shortcut plants an opcode in the ROM, which only works on a
+ * copy in RAM. Flash cannot be written, so without this the tape has to
+ * play its signal for everything. */
+uint8_t *spectrum_rom_writable(void) { return sRomRam; }
 static uint8_t  sBorder = 7;
 static uint8_t  sSpeaker;
 static volatile int sReady;
@@ -111,17 +118,7 @@ static void buildPalette(void) {
 /* Memory and ports                                                   */
 /* ---------------------------------------------------------------- */
 byte RdZ80(word A) {
-    if (A < SPEC_ROM_SIZE) {
-#ifdef HAVE_SPECTRUM_ROM
-        /* Normally straight out of flash. With a tape loaded it is a
-         * patched copy in RAM, because the trap is an opcode planted in
-         * the ROM and flash cannot be written. */
-        const uint8_t *ram = spectrum_tape_rom();
-        return ram ? ram[A] : spectrum_rom[A];
-#else
-        return 0xFF;
-#endif
-    }
+    if (A < SPEC_ROM_SIZE) return sROM ? sROM[A] : 0xFF;
     return sRAM[A - SPEC_ROM_SIZE];
 }
 
@@ -131,10 +128,20 @@ void WrZ80(word A, byte V) {
     if (A < SPEC_ATTRS + 768) markAddress(A);
 }
 
+/* Where the tape is, in T-states. ICount is what remains of the frame the
+ * CPU core is running, so the position is the frames gone by plus what
+ * this one has used. Measured monotonic across EI and interrupts. */
+static long long tstate(void) {
+    return (long long)sFrames * SPEC_FRAME_TSTATES
+         + (SPEC_FRAME_TSTATES - sCPU.ICount);
+}
+
 byte InZ80(word Port) {
-    /* Anything with A0 low is the ULA. The keyboard half-rows are
-     * selected by the high address byte, and unread bits float high. */
-    if (!(Port & 0x0001)) return (byte)(spectrum_keys_read((uint8_t)(Port >> 8)) | 0xA0);
+    /* Anything with A0 low is the ULA: the keyboard in bits 0 to 4, the
+     * tape in bit 6, and the unread bits floating high. */
+    if (!(Port & 0x0001))
+        return (byte)(spectrum_keys_read((uint8_t)(Port >> 8))
+                      | spectrum_tape_ear(tstate()) | 0xA0);
     return 0xFF;
 }
 
@@ -247,10 +254,19 @@ static void runFrame(void) {
         sLastBorder = sBorder;
     }
 
-    for (y = 0; y < 192; y++)
-        if (sDirty[y / BAND_LINES]) renderLine(y, flashPhase);
-    flushBand();
-    memset(sDirty, 0, sizeof(sDirty));
+    /* A 24kB block is three minutes of tape, because that is what it was,
+     * and the machine is let off its 50Hz pacing to get through it. The
+     * blit is then what costs, so while the tape turns the picture is
+     * redrawn a few times a second instead of fifty: the loading screen
+     * still appears, a two-minute wait becomes a short one, and nothing
+     * about the signal or the timing changes. Marks are left standing on
+     * the frames that are skipped, so nothing is lost. */
+    if (!spectrum_tape_playing() || (sFrames & 15) == 0) {
+        for (y = 0; y < 192; y++)
+            if (sDirty[y / BAND_LINES]) renderLine(y, flashPhase);
+        flushBand();
+        memset(sDirty, 0, sizeof(sDirty));
+    }
 
     /* The flash attribute swaps ink and paper twice a second, so every
      * cell using it has to be redrawn when the phase turns over. */
@@ -280,6 +296,13 @@ static void runFrame(void) {
      * feeds the watchdog and leaves the other core alone. If a frame
      * overruns, the deadline is reset rather than carried forward, so a
      * slow patch does not turn into a sprint afterwards. */
+    if (spectrum_tape_playing()) {
+        /* The tape is turning: run flat out and let the loading finish. */
+        sNextFrameUs = 0;
+        vTaskDelay(1);
+        return;
+    }
+
     {
         int64_t now = esp_timer_get_time();
         if (!sNextFrameUs) sNextFrameUs = now;
@@ -368,8 +391,18 @@ static void m_run(void) {
     if (!sRAM) { printf("spectrum: could not allocate 48kB of RAM\n"); return; }
     memset(sRAM, 0, SPEC_RAM_SIZE);
 
-    printf("spectrum: 48kB RAM at %p, ROM from flash, %d T-states a frame\n",
-           (void *)sRAM, SPEC_FRAME_TSTATES);
+    /* Every opcode the machine executes in the ROM is a read through the
+     * flash cache, and a tape loader spins in a handful of ROM bytes for
+     * minutes on end. A RAM copy is 16kB for a faster Z80; if it will not
+     * fit, flash still works and the machine is only slower. */
+    sROM = spectrum_rom;
+    {
+        sRomRam = (uint8_t *)heap_caps_malloc(SPEC_ROM_SIZE, MALLOC_CAP_8BIT);
+        if (sRomRam) { memcpy(sRomRam, spectrum_rom, SPEC_ROM_SIZE); sROM = sRomRam; }
+        printf("spectrum: 48kB RAM at %p, ROM %s, %d T-states a frame\n",
+               (void *)sRAM, sRomRam ? "copied to RAM" : "from flash",
+               SPEC_FRAME_TSTATES);
+    }
 
     ResetZ80(&sCPU);
     sCPU.IPeriod = SPEC_FRAME_TSTATES;
@@ -461,10 +494,10 @@ static const char *m_debug_help(void) {
 }
 static int m_debug_command(const char *line) {
     if (line[0] == 'y') {
-        printf("tape: %d block(s) handed over, ROM %s, PC %04X SP %04X\n",
-               spectrum_tape_blocks(),
-               spectrum_tape_rom() ? "patched in RAM" : "from flash",
-               sCPU.PC.W, sCPU.SP.W);
+        printf("tape: %d%% through, %s, block %d, PC %04X SP %04X\n",
+               spectrum_tape_progress(),
+               spectrum_tape_playing() ? "turning" : "stopped",
+               spectrum_tape_blocks(), sCPU.PC.W, sCPU.SP.W);
         return 1;
     }
     return 0;

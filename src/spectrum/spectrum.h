@@ -41,16 +41,30 @@ extern "C" {
 #define SNA_HEADER   27
 #define SNA_SIZE     (SNA_HEADER + 49152)
 
-/* Tapes built into this firmware. A .tap is loaded by trapping the ROM's
- * own LD-BYTES routine rather than by emulating an audio signal; see
+/* Tapes built into this firmware. A .tap is played as a signal on bit 6
+ * of port 0xFE, so a game's own loader works as well as the ROM's; see
  * spectrum_tape.c. */
 int         spectrum_tape_count(void);
 const char *spectrum_tape_name(int i);
 int         spectrum_tape_selected(void);
 void        spectrum_tape_select(int i);
 int         spectrum_tape_begin(const unsigned char *rom);
-const uint8_t *spectrum_tape_rom(void);
 int         spectrum_tape_blocks(void);
+
+/* The ROM copied into RAM, which the tape's shortcut patches, or NULL
+ * when it would not fit and the signal has to do all the work. */
+uint8_t    *spectrum_rom_writable(void);
+const uint8_t *spectrum_tape_rom(void);
+
+/* Bit 6 of port 0xFE as the tape drives it, given the current T-state. */
+uint8_t     spectrum_tape_ear(long long tstate);
+
+/* Non-zero while a tape is actually being read, so the machine can drop
+ * its 50Hz pacing and get the loading over with. */
+int         spectrum_tape_playing(void);
+
+/* How far through the tape, 0 to 100, for the console and the panel. */
+int         spectrum_tape_progress(void);
 void        spectrum_keys_autoload(void);
 
 /* Snapshots built into this firmware, the Spectrum's answer to the MSX's

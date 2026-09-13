@@ -19,3 +19,7 @@ roms/
 
 # work in progress, kept out of the build
 *.wip
+
+# built by tools/tapebench
+tools/tapebench/loader
+tools/tapebench/load
