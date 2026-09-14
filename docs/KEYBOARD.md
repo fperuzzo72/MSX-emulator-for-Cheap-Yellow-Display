@@ -219,6 +219,25 @@ small keyboard with no right-hand modifiers that puts GRAPH out of reach,
 which is the right way round: STOP under a thumb is worth more than a
 modifier for typing graphic characters.
 
+### Telling the keyboard and the firmware apart
+
+"This key does nothing" has two causes that look identical from outside:
+the keyboard never sent it, or the firmware dropped it. Two console
+commands settle it between them.
+
+`j` hands the machine a report nobody typed, so a mapping can be tested
+without the key that is meant to produce it:
+
+```
+j 5            hold Left Ctrl + Left Alt, which is the MSX's Ctrl+STOP
+j 4e           hold PageDown
+j 5 4e         both at once
+```
+
+With `10 GOTO 10` running in BASIC, `j 5` prints "Parei em 10" - which is
+how the Left Alt mapping above was verified without a keyboard that sends
+it.
+
 To see what your own keyboard sends, turn the dump on and press each key:
 
 ```

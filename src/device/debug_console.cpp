@@ -212,6 +212,32 @@ static void handleLine(char *line) {
             break;
         }
 
+        case 'j': {
+            /* Hand the machine a keyboard report we made up.
+             *
+             * "This key does nothing" has two causes that look identical
+             * from the outside: the keyboard never sent it, or the
+             * firmware dropped it. This settles which, without needing
+             * the keyboard that cannot send it. Modifiers are the byte
+             * before the keys: 01 LCtrl, 02 LShift, 04 LAlt, 08 LGUI,
+             * 10 RCtrl, 20 RShift, 40 AltGr, 80 RGUI.
+             *
+             *   j 4          hold Left Alt for a moment
+             *   j 5 4e       hold Left Ctrl + Left Alt and PageDown
+             */
+            unsigned mods = 0, k1 = 0, k2 = 0;
+            int n = sscanf(line + 1, "%x %x %x", &mods, &k1, &k2);
+            if (n < 1) { Serial.println("j <mods> [key] [key], all hex"); break; }
+            uint8_t rep[8] = { (uint8_t)mods, 0, (uint8_t)k1, (uint8_t)k2, 0, 0, 0, 0 };
+            uint8_t up[8]  = { 0, 0, 0, 0, 0, 0, 0, 0 };
+            machine->hid_report(rep);
+            Serial.printf("holding mods %02X key %02X %02X\n", mods, k1, k2);
+            delay(250);
+            machine->hid_report(up);
+            Serial.println("released");
+            break;
+        }
+
         case 'o':
             selector_open();
             Serial.println("selector open on the panel - tap a row, or anywhere else to cancel");
@@ -302,6 +328,7 @@ static void handleLine(char *line) {
             Serial.println("n <0|1>=sound  a [hz] [ms]=test tone  b <0|1>=BLE scan  k <0|1>=HID dump");
             Serial.println("m <0|1>=SD card  e [machine entry]=boot choice  o=selector  h=status");
             Serial.println("u=touch pressure  u c=calibrate  u x=forget the calibration");
+            Serial.println("j <mods> [key] [key]=inject a keyboard report, all hex");
             if (machine->debug_help()[0]) Serial.println(machine->debug_help());
             break;
     }
