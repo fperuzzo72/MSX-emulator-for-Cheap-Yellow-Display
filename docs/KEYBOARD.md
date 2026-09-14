@@ -191,6 +191,42 @@ h                           heap, frame rate, keyboard state
 dead keys and matrix rebuild that a real keyboard drives - it tests the
 real path, not a shortcut past it.
 
+## The modifier keys
+
+They are worth more than their labels suggest, because a modifier is a bit
+in a byte of its own rather than one of the six key slots, so it arrives
+whatever else is being held. See "rollover" below for why that matters.
+
+| key | MSX |
+|---|---|
+| Left Ctrl | CTRL |
+| Left Alt | STOP |
+| Left GUI (Win / Command) | SELECT |
+| Right Ctrl | SPACE, a second fire button |
+| Right GUI | GRAPH |
+| Right Alt | AltGr, for the accents - not passed to the MSX |
+
+STOP and SELECT are also on PageDown and PageUp, which is where they were
+first put; these are for keyboards with no function keys, where the two
+keys left of the space bar are the only ones left. **Which of those two
+sends Left Alt and which sends Left GUI depends on whether the keyboard is
+in its Mac or its Windows mode**, so press both and keep whichever you
+prefer. Ctrl+STOP, the MSX's break, is then two modifiers held together
+and cannot be lost to rollover either.
+
+GRAPH used to be on Left Alt and moved to Right GUI to make room. On a
+small keyboard with no right-hand modifiers that puts GRAPH out of reach,
+which is the right way round: STOP under a thumb is worth more than a
+modifier for typing graphic characters.
+
+To see what your own keyboard sends, turn the dump on and press each key:
+
+```
+k 1
+```
+
+Modifiers are printed by name.
+
 ## Two keys and a third: rollover
 
 A game that moves diagonally and shoots needs three keys at once, and

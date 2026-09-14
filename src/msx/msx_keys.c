@@ -605,7 +605,6 @@ void msx_keys_frame(void) {
     forceShift = forceNoShift = 0;
 
     if (mods & 0x01) state[M_ROW(K_CTRL)]  &= (unsigned char)~M_BIT(K_CTRL);
-    if (mods & 0x04) state[M_ROW(K_GRAPH)] &= (unsigned char)~M_BIT(K_GRAPH);
     /* Right Alt is AltGr: it belongs to this layer, not to the MSX. */
 
     /* Right Ctrl is a second Space, which is to say a second fire button.
@@ -622,6 +621,25 @@ void msx_keys_frame(void) {
      * Space still works as Space. This is simply one that cannot be lost.
      * Left Ctrl is still Ctrl, so Ctrl+PageDown still breaks a program. */
     if (mods & 0x10) state[M_ROW(K_SPACE)] &= (unsigned char)~M_BIT(K_SPACE);
+
+    /* The two keys left of the space bar, for SELECT and STOP.
+     *
+     * A small keyboard has no function keys and often no right Ctrl, but
+     * it always has these two and they sit under a thumb. They send Left
+     * GUI and Left Alt - which of them sends which depends on whether the
+     * keyboard is in its Mac or its Windows mode, so try both and keep
+     * the one you like. Being modifiers, they also survive being held
+     * with two cursor keys, which is the whole reason for putting them
+     * here rather than on PageUp and PageDown. Those still work too.
+     *
+     * Left Alt was the MSX's GRAPH key and GRAPH moves to Right GUI,
+     * which a fuller keyboard has and a small one does not. That is a
+     * real loss on a small keyboard, and it is the right way round: STOP
+     * under a thumb is worth more than a modifier for typing graphic
+     * characters. */
+    if (mods & 0x08) state[M_ROW(K_SELECT)] &= (unsigned char)~M_BIT(K_SELECT);
+    if (mods & 0x04) state[M_ROW(K_STOP)]   &= (unsigned char)~M_BIT(K_STOP);
+    if (mods & 0x80) state[M_ROW(K_GRAPH)]  &= (unsigned char)~M_BIT(K_GRAPH);
 
     for (i = 0; i < 6; i++) {
         unsigned char hid = keys[i];

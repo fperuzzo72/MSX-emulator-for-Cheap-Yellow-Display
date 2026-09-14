@@ -105,6 +105,24 @@ static void notifyCB(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len,
          * being held is one its matrix cannot resolve. Worth naming, or
          * it reads as just another number and the fault gets blamed on
          * the emulator. */
+        /* Name the modifier bits. Which of them a small keyboard's thumb
+         * keys send depends on whether it is in its Mac or its Windows
+         * mode, and that decides what they can be mapped to. */
+        if (len >= 1 && data[0]) {
+            static const char *kMod[8] = {
+                "LCtrl", "LShift", "LAlt", "LGUI",
+                "RCtrl", "RShift", "AltGr", "RGUI"
+            };
+            Serial.print("   [");
+            for (int b = 0, first = 1; b < 8; b++)
+                if (data[0] & (1 << b)) {
+                    if (!first) Serial.print(" ");
+                    Serial.print(kMod[b]);
+                    first = 0;
+                }
+            Serial.print("]");
+        }
+
         int rollover = 0, held = 0;
         for (size_t i = 2; i < len && i < 16; i++) {
             if (data[i] == 0x01) rollover = 1;
