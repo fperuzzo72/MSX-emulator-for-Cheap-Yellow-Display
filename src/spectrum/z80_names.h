@@ -21,6 +21,12 @@
 #define EXECZ80
 #endif
 
+/* Not this copy. -D FMSX turns on a fast inline opcode fetch in Z80.c
+ * that reads fMSX's RAM[] page table directly, which this machine does
+ * not have and must not link against. It fetches through its own
+ * spec_RdZ80 instead. */
+#undef FMSX
+
 #define RdZ80    spec_RdZ80
 #define WrZ80    spec_WrZ80
 #define InZ80    spec_InZ80

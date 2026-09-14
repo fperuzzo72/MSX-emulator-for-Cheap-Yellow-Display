@@ -138,10 +138,32 @@ rest of fMSX and is MSX-only, excluded from the Spectrum build by
    than one. Two is the sweet spot - four gains 0.4 fps more and costs 2kB
    that the BLE keyboard needs.
 
-   Where the MSX time still goes: ~15ms of fMSX a frame against ~7.7ms for
-   the same Z80 core on the Spectrum. fMSX runs `RunZ80` with a scanline
-   IPeriod, and its RdZ80/WrZ80 carry slot and mapper checks. That is the
-   next real target, and it is inside vendored code.
+   **And then `-D FMSX`, which was the real one.** `lib/z80/Z80.c` has a
+   fast inline `OpZ80` for fMSX that reads the `RAM[]` page table directly
+   instead of calling `RdZ80` for every instruction byte, and this project
+   had never defined the flag that enables it. MSX-BASIC at 1:1 went from
+   28.4 to 36.6 fps, the Z80's share of a frame from 15.2ms to 10.9ms.
+   The Spectrum's copy of the core opts out in `z80_names.h`: it has no
+   `RAM[]` and must not link against fMSX's.
+
+   **Measure on a fixed workload.** How long a frame takes depends on what
+   the emulated program executes, not only on its T-states - Nemesis reads
+   30 to 42 fps depending on whether it is on its title screen or running
+   its attract mode, and comparing across those is how a change gets
+   credited with a win it did not earn. MSX-BASIC at its prompt is the
+   bench used here.
+
+   Two more things tried after that, both dead:
+
+   - *The Z80 loop in IRAM* (`-D Z80_IN_IRAM`, an attribute on RunZ80):
+     the linker comes out **5752 bytes over**. The loop is too big.
+   - *BLE scanning as a suspect*: turning the scan off changes nothing,
+     measured. It is not stealing time from the emulation.
+
+   Where the MSX time still goes, per frame at 1:1: blit 13.0ms against
+   9.8ms of unavoidable wire, Z80 10.9ms, everything else about 3.4ms.
+   Both machines' Z80 copies now run at about the same rate, so the core
+   itself is not the outlier it was.
 2. **Nobody has heard the sound.** `InitSound()` reports 22050Hz,
    `PlayAllSound()` feeds `RenderAndPlayAudio()` into the I2S built-in DAC
    (`src/audio_glue.c`), and `PLAY` runs without stalling the frame rate,

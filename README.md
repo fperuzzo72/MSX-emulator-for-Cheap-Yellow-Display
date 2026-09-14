@@ -230,9 +230,28 @@ is all a hold gesture needs.
 | touchscreen | **12.6 ms** | **0.045 ms** |
 | whole frame | 23.2 ms, 43 fps | 10.2 ms, **98 fps** |
 
-The Spectrum is now paced down to 50fps with the machine half idle. The
-MSX, which draws far more, went from 22.5 to **33 fps at 1:1** and from
-15.3 to about 21 at 1.5x, with sound on in both cases.
+The Spectrum is now paced down to 50fps with the machine half idle.
+
+The MSX gained twice. The touchscreen fix took it from 22.5 to 33 fps at
+1:1, and then one missing compiler define took it to **36.6**: `lib/z80`
+carries a fast inline opcode fetch for fMSX, guarded by `-D FMSX`, that
+this project had never turned on. Without it every instruction byte went
+through `RdZ80`, which has to test for the slot register and the floppy
+controller on every read - and an opcode fetch can be neither.
+
+**Measure on a fixed workload or not at all.** How long a frame takes
+depends on what the emulated program is executing, not only on its
+T-states: Nemesis reads anywhere between 30 and 42 fps depending on
+whether it is sitting on its title screen or running its attract mode.
+The numbers here are MSX-BASIC at its prompt, which does the same thing
+every frame.
+
+| MSX-BASIC at 1:1 | before `-D FMSX` | after |
+|---|---|---|
+| frame rate | 28.4 fps | **36.6 fps** |
+| whole frame | 35.2 ms | 27.3 ms |
+| the Z80's share | 15.2 ms | 10.9 ms |
+| the blit | 13.2 ms | 13.0 ms |
 
 What limits the MSX now is the panel, not the emulator:
 

@@ -7,6 +7,7 @@
 #include "display.h"
 #include "chooser.h"
 #include "machine.h"
+#include "boot_menu.h"
 
 static const uint16_t COL_BG    = TFT_BLACK;
 static const uint16_t COL_TILE  = 0x18E3;   /* dark slate */
@@ -178,25 +179,56 @@ static void header(const char *text) {
     tft.drawString(text, GAP + 2, 7, 4);
 }
 
-static void footer(const char *left, const char *right) {
+/* The picture scale, reachable without a cable.
+ *
+ * It belongs on these screens rather than in a settings menu somewhere,
+ * because it is the one thing worth changing on a machine that is running
+ * slowly, and because the difference is visible the moment you go back. */
+#define SCALE_W 150
+#define SCALE_X (DISPLAY_PANEL_W - GAP - SCALE_W)
+
+static void drawScale(int machineIndex) {
+    TFT_eSPI &tft = panel_tft();
+    tft.fillRoundRect(SCALE_X, FOOT_TOP + 3, SCALE_W, FOOT_H - 8, 5, COL_TILE);
+    tft.drawRoundRect(SCALE_X, FOOT_TOP + 3, SCALE_W, FOOT_H - 8, 5, COL_EDGE);
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextColor(COL_TEXT, COL_TILE);
+    tft.drawString(boot_scale_for_machine(machineIndex) == 1 ? "picture  1:1"
+                                                            : "picture  1.5x",
+                   SCALE_X + SCALE_W / 2, FOOT_TOP + FOOT_H / 2 - 2, 2);
+    tft.setTextDatum(TL_DATUM);
+}
+
+static void footer(const char *left, int machineIndex) {
     TFT_eSPI &tft = panel_tft();
     tft.fillRect(0, FOOT_TOP, DISPLAY_PANEL_W, FOOT_H, COL_BG);
     tft.setTextDatum(ML_DATUM);
     if (left) {
         tft.fillRoundRect(GAP, FOOT_TOP + 3, 120, FOOT_H - 8, 5, COL_TILE);
+        tft.drawRoundRect(GAP, FOOT_TOP + 3, 120, FOOT_H - 8, 5, COL_EDGE);
         tft.setTextColor(COL_TEXT, COL_TILE);
         tft.drawString(left, GAP + 14, FOOT_TOP + FOOT_H / 2 - 2, 2);
     }
-    if (right) {
-        tft.setTextColor(COL_DIM, COL_BG);
-        tft.setTextDatum(MR_DATUM);
-        tft.drawString(right, DISPLAY_PANEL_W - GAP - 4, FOOT_TOP + FOOT_H / 2 - 2, 2);
-        tft.setTextDatum(ML_DATUM);
-    }
+    if (machineIndex >= 0) drawScale(machineIndex);
+    tft.setTextDatum(TL_DATUM);
 }
 
 static bool inFooterBack(int x, int y) {
     return y >= FOOT_TOP && x >= GAP && x < GAP + 120;
+}
+
+static bool inFooterScale(int x, int y) {
+    return y >= FOOT_TOP && x >= SCALE_X;
+}
+
+/* Toggle it, remember it for this machine, and show the new state. The
+ * machine picks it up on its next frame. */
+static void toggleScale(int machineIndex) {
+    int next = boot_scale_for_machine(machineIndex) == 1 ? 2 : 1;
+    boot_remember_scale(machineIndex, next);
+    display_set_scale(next);
+    drawScale(machineIndex);
+    delay(120);
 }
 
 /* A group tile: the names it holds, one to a line. The whole point of
@@ -319,8 +351,7 @@ int chooser_pick_machine(int allowCancel) {
                          machine_list[i]->entry_count());
             tile(GAP + i * (w + GAP), y, w, h, machine_list[i]->name, sub, false);
         }
-        footer(allowCancel ? "back" : 0,
-               display_get_scale() == 1 ? "picture 1:1" : "picture 1.5x");
+        footer(allowCancel ? "back" : 0, -1);
 
         int tx, ty;
         if (!waitPress(&tx, &ty, 60UL * 1000)) return -1;
@@ -352,6 +383,7 @@ int chooser_pick_machine(int allowCancel) {
 #define MAX_ENTRIES 128
 static int sOrder[MAX_ENTRIES];
 static int sOrderCount;
+static int sMachineIndex;    /* whose list is on screen, for the footer */
 
 static void buildOrder(const Machine *m) {
     int n = m->entry_count();
@@ -404,11 +436,12 @@ static int pickFromGroup(const Machine *m, int first, int count) {
             fit(name, sizeof(name), orderedName(m, first + i), w - 20, 4);
             tile(GAP, top + i * (h + GAP), w, h, name, 0, false);
         }
-        footer("back", 0);
+        footer("back", sMachineIndex);
 
         int tx, ty;
         if (!waitPress(&tx, &ty, 60UL * 1000)) return -1;
         if (inFooterBack(tx, ty)) return -1;
+        if (inFooterScale(tx, ty)) { toggleScale(sMachineIndex); continue; }
 
         for (int i = 0; i < count; i++) {
             int y = top + i * (h + GAP);
@@ -425,6 +458,7 @@ static int pickFromGroup(const Machine *m, int first, int count) {
 int chooser_pick_entry(int machineIndex, int allowCancel) {
     TFT_eSPI &tft = panel_tft();
     const Machine *m = machine_list[machineIndex];
+    sMachineIndex = machineIndex;
     buildOrder(m);
     int total = sOrderCount;
 
@@ -449,11 +483,12 @@ int chooser_pick_entry(int machineIndex, int allowCancel) {
             if (count <= 0) { tile(x, y, w, h, "", 0, false); continue; }
             listTile(m, x, y, w, h, first, count, false);
         }
-        footer(allowCancel ? "back" : 0, 0);
+        footer(allowCancel ? "back" : 0, sMachineIndex);
 
         int tx, ty;
         if (!waitPress(&tx, &ty, 60UL * 1000)) return -1;
         if (allowCancel && inFooterBack(tx, ty)) return -1;
+        if (inFooterScale(tx, ty)) { toggleScale(sMachineIndex); continue; }
 
         for (int g = 0; g < GROUPS; g++) {
             int first, count;

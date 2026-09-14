@@ -99,6 +99,19 @@ static void notifyCB(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len,
     if (sLogReports) {
         Serial.printf("HID %s len %u:", chr->getUUID().toString().c_str(), (unsigned)len);
         for (size_t i = 0; i < len && i < 16; i++) Serial.printf(" %02X", data[i]);
+
+        /* 0x01 in a key slot is ErrorRollOver: the keyboard is telling us
+         * it cannot say which keys are down, because the combination
+         * being held is one its matrix cannot resolve. Worth naming, or
+         * it reads as just another number and the fault gets blamed on
+         * the emulator. */
+        int rollover = 0, held = 0;
+        for (size_t i = 2; i < len && i < 16; i++) {
+            if (data[i] == 0x01) rollover = 1;
+            else if (data[i] != 0x00) held++;
+        }
+        if (rollover) Serial.print("   <- keyboard cannot report this combination");
+        else if (held) Serial.printf("   (%d key%s down)", held, held == 1 ? "" : "s");
         Serial.println();
     }
 
