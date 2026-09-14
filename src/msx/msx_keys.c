@@ -150,14 +150,22 @@ static const unsigned short kHidControl[0x68] = {
     [0x2C] = K_SPACE,  [0x39] = K_CAPS,
     [0x3A] = K_F1, [0x3B] = K_F2, [0x3C] = K_F3, [0x3D] = K_F4, [0x3E] = K_F5,
     [0x49] = K_INS, [0x4A] = K_HOME, [0x4C] = K_DEL,
-    /* The MSX keys a PC keyboard has no cap for go on the page keys:
-     * PageDown is STOP, so Ctrl+PageDown is BREAK and is the way to
-     * interrupt a running BASIC program, and PageUp is SELECT. End is
-     * STOP as well, which costs nothing and is the usual emulator
-     * convention. */
-    [0x4E] = K_STOP,
-    [0x4D] = K_STOP,
+    /* The MSX keys a PC keyboard has no cap for go on the block above the
+     * cursor keys:
+     *
+     *   End      GRAPH    the MSX's graphic characters
+     *   PageUp   SELECT
+     *   PageDown STOP     so Ctrl+PageDown is BREAK
+     *
+     * End used to be a second STOP, which PageDown already was, so it was
+     * the only key up there not already spoken for - Home, Insert and
+     * Delete are all MSX keys in their own right. CODE is on Right GUI,
+     * for a keyboard that has one; it is the one of the two worth least
+     * here, because what it reaches on a Brazilian machine is the
+     * accented letters and those are already a dead key away. */
+    [0x4D] = K_GRAPH,
     [0x4B] = K_SELECT,
+    [0x4E] = K_STOP,
     [0x4F] = K_RIGHT, [0x50] = K_LEFT, [0x51] = K_DOWN, [0x52] = K_UP,
     [0x58] = K_RETURN,
 };
@@ -629,14 +637,14 @@ void msx_keys_frame(void) {
      *   Left GUI  - fire, which is to say the MSX's Space
      *   AltGr     - STOP, so Ctrl+AltGr is the MSX's break
      *   Left Alt  - SELECT
-     *   Right GUI - GRAPH, where a keyboard has one
+     *   Right GUI - CODE, where a keyboard has one
      *
      * Space is still Space and PageUp and PageDown are still SELECT and
      * STOP. These are the copies that cannot be lost. */
     if (mods & 0x08) state[M_ROW(K_SPACE)]  &= (unsigned char)~M_BIT(K_SPACE);
     if (mods & 0x40) state[M_ROW(K_STOP)]   &= (unsigned char)~M_BIT(K_STOP);
     if (mods & 0x04) state[M_ROW(K_SELECT)] &= (unsigned char)~M_BIT(K_SELECT);
-    if (mods & 0x80) state[M_ROW(K_GRAPH)]  &= (unsigned char)~M_BIT(K_GRAPH);
+    if (mods & 0x80) state[M_ROW(K_CODE)]   &= (unsigned char)~M_BIT(K_CODE);
 
     for (i = 0; i < 6; i++) {
         unsigned char hid = keys[i];

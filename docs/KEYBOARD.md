@@ -204,7 +204,7 @@ whatever else is being held. See "rollover" below for why that matters.
 | **Right Alt** (AltGr) | **STOP**, so Ctrl+AltGr is Break |
 | Left Alt (Option) | SELECT |
 | Right Ctrl | SPACE as well |
-| Right GUI | GRAPH |
+| Right GUI | CODE |
 
 Space is still Space and PageUp and PageDown are still SELECT and STOP.
 These are the copies that cannot be lost.
@@ -226,10 +226,18 @@ letters is still a dead key away, which is the normal way to type them
 here anyway. Nothing on the MSX itself wanted AltGr: its own special keys
 are GRAPH and CODE, and GRAPH is on Right GUI.
 
-GRAPH used to be on Left Alt. On a keyboard with no right-hand modifiers
-it is now out of reach, and that is the right way round: a fire button
-under the thumb is worth more than a modifier for typing graphic
-characters.
+### GRAPH and CODE
+
+**GRAPH is End.** That block above the cursor keys is where the MSX keys a
+PC has no cap for live - PageUp is SELECT, PageDown is STOP - and End was
+the only one up there not already spoken for, because it was a second STOP
+and PageDown already was one. Home, Insert and Delete are all MSX keys in
+their own right and keep their caps.
+
+**CODE is Right GUI**, which a small keyboard does not have, so on one of
+those CODE is out of reach. It is the one of the two worth least here: on
+a Brazilian machine it reaches the accented letters, and those are already
+a dead key away.
 
 ### Telling the keyboard and the firmware apart
 
