@@ -593,7 +593,7 @@ const Machine spectrum_machine = {
           * as well fill the panel. */
     m_prealloc, m_run, m_ready, m_frames,
     m_hid, m_type, m_typing,
-    m_screen_row, m_screen_mode, m_char_pattern, m_peek,
+    m_screen_row, m_screen_mode, m_char_pattern, m_peek, 0,
     m_set_sound, m_sound_on,
     m_entry_count, m_entry_name, m_select_entry, m_selected_entry, m_switch_to,
     m_debug_command, m_debug_help,

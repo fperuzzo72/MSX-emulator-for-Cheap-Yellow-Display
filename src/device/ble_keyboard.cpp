@@ -329,6 +329,19 @@ void ble_keyboard_poll() {
     machine->hid_report(report);
 }
 
+/* Pretend a key was pressed on the keyboard that is not there.
+ *
+ * It has to go in here rather than straight to the machine: this task
+ * hands the machine its cached report every time round its loop, so a
+ * report delivered any other way is overwritten within a millisecond.
+ * That is a race an injected report loses almost always and wins just
+ * often enough to look like it worked. */
+void ble_keyboard_inject(const uint8_t report[8]) {
+    portENTER_CRITICAL(&sReportMux);
+    memcpy((void *)sReport, report, 8);
+    portEXIT_CRITICAL(&sReportMux);
+}
+
 static void bleServiceTask(void *arg) {
     (void)arg;
     for (;;) {

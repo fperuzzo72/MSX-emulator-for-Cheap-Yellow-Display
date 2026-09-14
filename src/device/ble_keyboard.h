@@ -37,6 +37,10 @@ int ble_keyboard_connected(void);
  * discarded until you look at the bytes. */
 unsigned long ble_keyboard_report_count(void);
 void ble_keyboard_log_reports(int on);
+
+/* Feed the machine a report nobody typed, for testing a key mapping
+ * without the key. See the 'j' console command. */
+void ble_keyboard_inject(const uint8_t report[8]);
 unsigned long ble_keyboard_adverts_seen(void);
 void ble_keyboard_scan(int on);
 

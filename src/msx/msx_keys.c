@@ -208,17 +208,6 @@ static unsigned char deadKeyFor(unsigned char hid, int shift) {
     return ACC_NONE;
 }
 
-/* AltGr shortcuts a US-International user expects, for the characters
- * worth reaching without the dead-key dance. Only c-cedilla has a key of
- * its own on the Hotbit; the rest go through the dead keys like normal. */
-static unsigned char altGrAccent(unsigned char hid) {
-    switch (hid) {
-        case 0x04: case 0x08: case 0x0C: case 0x12: case 0x18: /* a e i o u */
-            return ACC_ACUTE;
-        case 0x11: return ACC_TILDE; /* n */
-        default:   return ACC_NONE;
-    }
-}
 
 /* Accent + letter -> the character code this machine actually has.
  *
@@ -622,23 +611,31 @@ void msx_keys_frame(void) {
      * Left Ctrl is still Ctrl, so Ctrl+PageDown still breaks a program. */
     if (mods & 0x10) state[M_ROW(K_SPACE)] &= (unsigned char)~M_BIT(K_SPACE);
 
-    /* The two keys left of the space bar, for SELECT and STOP.
+    /* The keys either side of the space bar, and why they hold what they
+     * hold. This was measured on the keyboard in question rather than
+     * chosen, and the measurement is the whole argument.
      *
-     * A small keyboard has no function keys and often no right Ctrl, but
-     * it always has these two and they sit under a thumb. They send Left
-     * GUI and Left Alt - which of them sends which depends on whether the
-     * keyboard is in its Mac or its Windows mode, so try both and keep
-     * the one you like. Being modifiers, they also survive being held
-     * with two cursor keys, which is the whole reason for putting them
-     * here rather than on PageUp and PageDown. Those still work too.
+     * Holding two cursor keys for a diagonal and then pressing Space,
+     * that keyboard reports "down and right", or "right and space", and
+     * never all three. It does not even send ErrorRollOver to say so; the
+     * third key is simply not there. Its matrix cannot resolve three, and
+     * no firmware can recover a key that was never sent.
      *
-     * Left Alt was the MSX's GRAPH key and GRAPH moves to Right GUI,
-     * which a fuller keyboard has and a small one does not. That is a
-     * real loss on a small keyboard, and it is the right way round: STOP
-     * under a thumb is worth more than a modifier for typing graphic
-     * characters. */
-    if (mods & 0x08) state[M_ROW(K_SELECT)] &= (unsigned char)~M_BIT(K_SELECT);
-    if (mods & 0x04) state[M_ROW(K_STOP)]   &= (unsigned char)~M_BIT(K_STOP);
+     * Modifiers do not go through those six key slots. They are bits in a
+     * byte of their own, on their own matrix line, and they arrive
+     * whatever else is held. So the keys that a game needs while it is
+     * moving live there:
+     *
+     *   Left GUI  - fire, which is to say the MSX's Space
+     *   AltGr     - STOP, so Ctrl+AltGr is the MSX's break
+     *   Left Alt  - SELECT
+     *   Right GUI - GRAPH, where a keyboard has one
+     *
+     * Space is still Space and PageUp and PageDown are still SELECT and
+     * STOP. These are the copies that cannot be lost. */
+    if (mods & 0x08) state[M_ROW(K_SPACE)]  &= (unsigned char)~M_BIT(K_SPACE);
+    if (mods & 0x40) state[M_ROW(K_STOP)]   &= (unsigned char)~M_BIT(K_STOP);
+    if (mods & 0x04) state[M_ROW(K_SELECT)] &= (unsigned char)~M_BIT(K_SELECT);
     if (mods & 0x80) state[M_ROW(K_GRAPH)]  &= (unsigned char)~M_BIT(K_GRAPH);
 
     for (i = 0; i < 6; i++) {
@@ -707,22 +704,12 @@ void msx_keys_frame(void) {
         c = physShift ? kUsShift[hid] : kUsBase[hid];
         if (!c) continue;
 
-        /* AltGr+c is c-cedilla, which has a key of its own here. */
-        if ((mods & 0x40) && hid == 0x06) {
-            if (isNew) {
-                queuePushIdx((unsigned char)(1 * 8 + 7), (unsigned char)physShift);
-                markConsumed(hid);
-            }
-            continue;
-        }
-        /* The other AltGr shortcuts go through the dead keys. */
-        if ((mods & 0x40) && altGrAccent(hid) != ACC_NONE) {
-            if (isNew) {
-                emitChar(altGrAccent(hid), c);
-                markConsumed(hid);
-            }
-            continue;
-        }
+        /* AltGr used to be a second way to type the accented letters -
+         * AltGr+a for a-acute, AltGr+c for c-cedilla. It is the STOP key
+         * now, and nothing was really lost: every one of those letters is
+         * already a dead key away, and c-cedilla has a key of its own on
+         * this layout. See the modifier table in docs/KEYBOARD.md for why
+         * a key under the thumb was worth more. */
         if (sPendingAccent != ACC_NONE) {
             if (isNew) {
                 emitChar(sPendingAccent, c);

@@ -197,27 +197,39 @@ They are worth more than their labels suggest, because a modifier is a bit
 in a byte of its own rather than one of the six key slots, so it arrives
 whatever else is being held. See "rollover" below for why that matters.
 
-| key | MSX |
+| modifier | MSX |
 |---|---|
 | Left Ctrl | CTRL |
-| Left Alt | STOP |
-| Left GUI (Win / Command) | SELECT |
-| Right Ctrl | SPACE, a second fire button |
+| **Left GUI** (Win / Command) | **SPACE - the fire button** |
+| **Right Alt** (AltGr) | **STOP**, so Ctrl+AltGr is Break |
+| Left Alt (Option) | SELECT |
+| Right Ctrl | SPACE as well |
 | Right GUI | GRAPH |
-| Right Alt | AltGr, for the accents - not passed to the MSX |
 
-STOP and SELECT are also on PageDown and PageUp, which is where they were
-first put; these are for keyboards with no function keys, where the two
-keys left of the space bar are the only ones left. **Which of those two
-sends Left Alt and which sends Left GUI depends on whether the keyboard is
-in its Mac or its Windows mode**, so press both and keep whichever you
-prefer. Ctrl+STOP, the MSX's break, is then two modifiers held together
-and cannot be lost to rollover either.
+Space is still Space and PageUp and PageDown are still SELECT and STOP.
+These are the copies that cannot be lost.
 
-GRAPH used to be on Left Alt and moved to Right GUI to make room. On a
-small keyboard with no right-hand modifiers that puts GRAPH out of reach,
-which is the right way round: STOP under a thumb is worth more than a
-modifier for typing graphic characters.
+**Fire lives on a modifier because on the keyboard this was built with it
+cannot live anywhere else.** Holding two cursor keys for a diagonal and
+then Space, that keyboard reports "down and right", or "right and space",
+and never all three - it does not even send ErrorRollOver to say so. The
+third key is simply not there.
+
+A small keyboard has two keys left of the space bar and they are usually
+Left GUI and AltGr, which is why those two carry the keys a game needs
+while it is moving. Which physical key sends which depends on whether the
+keyboard is in its Mac or its Windows mode, so press both and find out.
+
+**AltGr no longer types accents.** It used to be a second way to reach
+them - AltGr+a for a-acute, AltGr+c for c-cedilla - and every one of those
+letters is still a dead key away, which is the normal way to type them
+here anyway. Nothing on the MSX itself wanted AltGr: its own special keys
+are GRAPH and CODE, and GRAPH is on Right GUI.
+
+GRAPH used to be on Left Alt. On a keyboard with no right-hand modifiers
+it is now out of reach, and that is the right way round: a fire button
+under the thumb is worth more than a modifier for typing graphic
+characters.
 
 ### Telling the keyboard and the firmware apart
 

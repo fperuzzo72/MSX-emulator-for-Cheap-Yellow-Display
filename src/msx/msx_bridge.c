@@ -65,6 +65,15 @@ void msx_kbd_write(const uint8_t state[16]) {
     for (i = 0; i < 16; i++) KeyState[i] = state[i];
 }
 
+/* What the machine is actually being told is held down. A zero bit is a
+ * closed contact. Reading this back is how a key mapping gets checked
+ * without watching for its effect on the screen, which is indirect and,
+ * as it turned out, easy to misread. */
+int msx_matrix_row(int row) {
+    if (row < 0 || row > 15) return -1;
+    return KeyState[row];
+}
+
 int msx_screen_mode(void) { return ScrMode; }
 
 int msx_screen_row(int row, uint8_t *out, int max) {

@@ -53,6 +53,10 @@ typedef struct Machine {
     int  (*char_pattern)(int code, uint8_t *rows8);
     int  (*peek)(int addr);
 
+    /* One row of the emulated key matrix, or NULL where a machine has
+     * none to show. For checking what a key mapping actually does. */
+    int  (*matrix_row)(int row);
+
     /* --- sound --------------------------------------------------------- */
     void (*set_sound)(int on);
     int  (*sound_on)(void);

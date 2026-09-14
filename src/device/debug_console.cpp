@@ -230,10 +230,20 @@ static void handleLine(char *line) {
             if (n < 1) { Serial.println("j <mods> [key] [key], all hex"); break; }
             uint8_t rep[8] = { (uint8_t)mods, 0, (uint8_t)k1, (uint8_t)k2, 0, 0, 0, 0 };
             uint8_t up[8]  = { 0, 0, 0, 0, 0, 0, 0, 0 };
-            machine->hid_report(rep);
+            ble_keyboard_inject(rep);
             Serial.printf("holding mods %02X key %02X %02X\n", mods, k1, k2);
-            delay(250);
-            machine->hid_report(up);
+            delay(120);
+            /* Read the matrix back while it is still held, so this says
+             * what the machine was told rather than what the screen did
+             * about it. A zero bit is a key down. */
+            if (machine->matrix_row) {
+                Serial.print("matrix:");
+                for (int r = 0; r < 11; r++)
+                    Serial.printf(" %d=%02X", r, machine->matrix_row(r));
+                Serial.println();
+            }
+            delay(400);
+            ble_keyboard_inject(up);
             Serial.println("released");
             break;
         }

@@ -40,6 +40,9 @@ void msx_kbd_write(const uint8_t state[16]);
 /* Current screen mode (0 = SCREEN 0 text 40col, 1 = SCREEN 1 32col). */
 int msx_screen_mode(void);
 
+/* One row of the key matrix as the machine currently sees it. */
+int msx_matrix_row(int row);
+
 /* Copies one row of the text-mode name table into `out` as raw MSX
  * character codes. Returns the number of columns written (0 if the
  * current screen mode is not a text mode). */
