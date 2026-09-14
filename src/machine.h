@@ -22,6 +22,13 @@ typedef struct Machine {
     /* For the boot menu and the banner, e.g. "MSX1 (Hotbit HB-8000)". */
     const char *name;
 
+    /* Picture scale this machine comes up at: 1 for one panel pixel per
+     * machine pixel, 2 for one and a half. Not a preference but a
+     * measurement - the Spectrum runs at twice the speed it needs and can
+     * spend it on a bigger picture, the MSX cannot (see README, "Speed").
+     * Whatever the user last chose with `z` wins over this. */
+    int default_scale;
+
     /* Claim the framebuffer before anything else fragments the one big
      * DRAM region this chip has. Called before run(). */
     int (*prealloc_video)(void);

@@ -123,6 +123,8 @@ static int m_debug_command(const char *line) {
 
 const Machine msx_machine = {
     "MSX1 (Hotbit HB-8000)",
+    1,   /* 1:1. At 1.5x the blit alone is 24ms of a frame and this
+          * machine has none to spare - see README, "Speed". */
     m_prealloc, m_run, m_ready, m_frames,
     m_hid, m_type, m_typing,
     m_screen_row, m_screen_mode, m_char_pattern, m_peek,

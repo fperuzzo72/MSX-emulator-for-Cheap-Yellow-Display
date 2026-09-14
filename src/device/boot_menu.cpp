@@ -1,237 +1,185 @@
-/* boot_menu.cpp - pick a machine and a ROM at power-on. See boot_menu.h. */
+/* boot_menu.cpp - what comes up at power-on. See boot_menu.h.
+ *
+ * Almost nothing is left in here: the picking moved to chooser.cpp, which
+ * both this and the in-game selector use. What remains is the splash that
+ * starts the remembered choice on its own after a few seconds, the touch
+ * calibration, and the picture scale.
+ */
 #include <Arduino.h>
 #include <Preferences.h>
 
 #include "panel.h"
 #include "display.h"
 #include "boot_menu.h"
+#include "chooser.h"
 #include "machine.h"
 
-#define MENU_MAX      96
-#define MENU_SECONDS  5      /* before it boots the remembered choice */
+#define MENU_SECONDS 5      /* before it boots the remembered choice */
 
-struct Entry { int machineIndex, entry; };
-static Entry sEntries[MENU_MAX];
-static int   sCount;
+static const uint16_t COL_BG   = TFT_BLACK;
+static const uint16_t COL_TEXT = TFT_WHITE;
+static const uint16_t COL_DIM  = 0xAD55;
+static const uint16_t COL_HEAD = TFT_YELLOW;
 
-static const uint16_t COL_BG     = TFT_BLACK;
-static const uint16_t COL_TITLE  = TFT_DARKGREY;
-static const uint16_t COL_TEXT   = TFT_WHITE;
-static const uint16_t COL_PICK   = TFT_YELLOW;
-static const uint16_t COL_ROW    = 0x1082;   /* a very dark blue-grey */
+/* The picture scale is per machine, and remembered.
+ *
+ * It has to be: the Spectrum runs at twice the speed it needs and can
+ * spend it on a picture that fills the panel, while on the MSX the same
+ * setting costs ten frames a second it does not have. Each machine's
+ * table says what it comes up at; this only remembers a change. */
+#define NVS_NS "cyd"
 
-#define ROW_TOP     48
-#define ROW_HEIGHT  30
-#define ROWS_SHOWN  7
-#define SCROLL_X    432
-#define SCROLL_W    (DISPLAY_PANEL_W - SCROLL_X)
+static void scaleKey(char *out, int machineIndex) {
+    snprintf(out, 12, "scale%d", machineIndex);
+}
 
-/* The picture-scale button, below the list. */
-#define BTN_X      16
-#define BTN_W      200
-#define BTN_H      34
-
-/* The picture scale is remembered here rather than compiled in, so the
- * board comes back up the way it was left. It is applied even when the
- * menu is skipped for having nothing to choose. */
-static int loadScale(void) {
+int boot_scale_for_machine(int machineIndex) {
     Preferences prefs;
-    int v = 2;
-    if (prefs.begin("cyd", true)) {
-        v = prefs.getInt("scale", 2);
+    char key[12];
+    int v = machine_list[machineIndex]->default_scale;
+    scaleKey(key, machineIndex);
+    if (prefs.begin(NVS_NS, true)) {
+        v = prefs.getInt(key, v);
         prefs.end();
     }
     return (v == 1) ? 1 : 2;
 }
 
-static void saveScale(int v) {
+void boot_remember_scale(int machineIndex, int scale) {
     Preferences prefs;
-    if (!prefs.begin("cyd", false)) return;
-    prefs.putInt("scale", v);
+    char key[12];
+    scaleKey(key, machineIndex);
+    if (!prefs.begin(NVS_NS, false)) return;
+    prefs.putInt(key, scale);
     prefs.end();
 }
 
-static int sTop;   /* first row shown, for a list longer than the panel */
-
-static int btnY(void) { return ROW_TOP + ROWS_SHOWN * ROW_HEIGHT + 8; }
-
-static void drawScaleButton(TFT_eSPI &tft) {
-    int y = btnY();
-    int scale = display_get_scale();
-    tft.fillRoundRect(BTN_X, y, BTN_W, BTN_H, 5, COL_ROW);
-    tft.drawRoundRect(BTN_X, y, BTN_W, BTN_H, 5, COL_TITLE);
-    tft.setTextDatum(TL_DATUM);
-    tft.setTextColor(COL_TEXT, COL_ROW);
-    tft.drawString(scale == 1 ? "picture  1:1  (small, crisp)"
-                              : "picture  1.5x  (fills the screen)",
-                   BTN_X + 10, y + 9, 2);
+static int totalEntries(void) {
+    int n = 0;
+    for (int m = 0; m < machine_count; m++) n += machine_list[m]->entry_count();
+    return n;
 }
 
-static void buildEntries(void) {
-    sCount = 0;
-    for (int m = 0; m < machine_count && sCount < MENU_MAX; m++) {
-        int n = machine_list[m]->entry_count();
-        for (int e = 0; e < n && sCount < MENU_MAX; e++) {
-            sEntries[sCount].machineIndex = m;
-            sEntries[sCount].entry = e;
-            sCount++;
+/* Ask before taking over the screen for four corner taps.
+ *
+ * It has to be asked rather than assumed: calibrateTouch() waits for four
+ * presses and has no way out, so a board that powers up with nobody in
+ * front of it would sit there for good. Ten seconds of nothing and it
+ * carries on with TFT_eSPI's rough defaults, which is how this shipped
+ * before and is merely inaccurate rather than stuck. */
+static void offerCalibration(TFT_eSPI &tft) {
+    Serial.println("menu: this board has no touch calibration");
+    for (int left = 10; left > 0; left--) {
+        tft.fillScreen(COL_BG);
+        tft.setTextDatum(TC_DATUM);
+        tft.setTextColor(COL_HEAD, COL_BG);
+        tft.drawString("The screen is not calibrated",
+                       DISPLAY_PANEL_W / 2, 90, 4);
+        tft.setTextColor(COL_TEXT, COL_BG);
+        tft.drawString("touch it now to fix that",
+                       DISPLAY_PANEL_W / 2, 140, 2);
+        tft.setTextColor(COL_DIM, COL_BG);
+        char buf[48];
+        snprintf(buf, sizeof(buf), "carrying on without it in %d", left);
+        tft.drawString(buf, DISPLAY_PANEL_W / 2, 190, 2);
+        tft.setTextDatum(TL_DATUM);
+
+        uint32_t end = millis() + 1000;
+        while ((int32_t)(end - millis()) > 0) {
+            /* Held, not glimpsed. A single reading over the threshold is
+              * something a floating resistive panel does on its own, and
+              * that is enough to walk the whole calibration through four
+              * corners nobody touched. */
+            if (tft.getTouchRawZ() >= 600) {
+                int held = 0;
+                while (held < 20 && tft.getTouchRawZ() >= 600) { held++; delay(15); }
+                if (held >= 20) {
+                    while (tft.getTouchRawZ() >= 600) delay(20);
+                    chooser_calibrate();
+                    return;
+                }
+            }
+            delay(20);
         }
     }
+    Serial.println("menu: carrying on uncalibrated - 'u c' on the console to do it later");
 }
 
-/* Reuse the touch calibration another firmware on this board may have
- * left in NVS. If there is none, TFT_eSPI's defaults are rough but the
- * rows here are 30 pixels tall and the whole width, so rough is enough. */
-static void applyTouchCalibration(TFT_eSPI &tft) {
-    Preferences prefs;
-    uint16_t cal[5];
-    if (!prefs.begin("cyd", true)) return;
-    if (prefs.getBytesLength("touchcal") == sizeof(cal)) {
-        prefs.getBytes("touchcal", cal, sizeof(cal));
-        tft.setTouch(cal);
-        Serial.println("menu: using the touch calibration stored on this board");
-    }
-    prefs.end();
-}
+static void splash(TFT_eSPI &tft, int secondsLeft) {
+    const Machine *m = machine_list[machine_chosen_index()];
+    tft.fillScreen(COL_BG);
 
-/* One visible row, `slot` counting from the top of the window. */
-static void drawRow(TFT_eSPI &tft, int slot, int i, bool current) {
-    int y = ROW_TOP + slot * ROW_HEIGHT;
-    tft.fillRect(0, y, SCROLL_X - 4, ROW_HEIGHT - 2, current ? COL_ROW : COL_BG);
-    if (i < 0 || i >= sCount) return;
+    tft.setTextDatum(TC_DATUM);
+    tft.setTextColor(COL_DIM, COL_BG);
+    tft.drawString("starting", DISPLAY_PANEL_W / 2, 58, 2);
 
-    const Machine *m = machine_list[sEntries[i].machineIndex];
-    tft.setTextColor(current ? COL_PICK : COL_TEXT, current ? COL_ROW : COL_BG);
+    tft.setTextColor(COL_HEAD, COL_BG);
+    tft.drawString(m->name, DISPLAY_PANEL_W / 2, 92, 4);
+
+    tft.setTextColor(COL_TEXT, COL_BG);
+    tft.drawString(m->entry_name(m->selected_entry()), DISPLAY_PANEL_W / 2, 140, 4);
+
+    tft.setTextColor(COL_DIM, COL_BG);
+    tft.drawString("touch the screen to choose something else",
+                   DISPLAY_PANEL_W / 2, 210, 2);
+
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%d", secondsLeft);
+    tft.setTextColor(COL_DIM, COL_BG);
+    tft.drawString(buf, DISPLAY_PANEL_W / 2, 250, 4);
     tft.setTextDatum(TL_DATUM);
-    tft.drawString(m->name, 10, y + 6, 2);
-    tft.drawString(m->entry_name(sEntries[i].entry), 196, y + 6, 2);
-}
-
-static void drawScrollButtons(TFT_eSPI &tft) {
-    int h = (ROWS_SHOWN * ROW_HEIGHT) / 2;
-    tft.fillRect(SCROLL_X, ROW_TOP, SCROLL_W, h - 2, COL_ROW);
-    tft.fillRect(SCROLL_X, ROW_TOP + h, SCROLL_W, h - 2, COL_ROW);
-    tft.setTextDatum(MC_DATUM);
-    tft.setTextColor(COL_TEXT, COL_ROW);
-    tft.drawString("up", SCROLL_X + SCROLL_W / 2, ROW_TOP + h / 2, 2);
-    tft.drawString("dn", SCROLL_X + SCROLL_W / 2, ROW_TOP + h + h / 2, 2);
-    tft.setTextDatum(TL_DATUM);
-}
-
-static void drawMenu(TFT_eSPI &tft, int current, int secondsLeft) {
-    tft.setTextDatum(TL_DATUM);
-    tft.setTextColor(COL_TITLE, COL_BG);
-    tft.drawString("Choose a machine", 16, 16, 4);
-
-    for (int slot = 0; slot < ROWS_SHOWN; slot++)
-        drawRow(tft, slot, sTop + slot, sTop + slot == current);
-    drawScrollButtons(tft);
-    drawScaleButton(tft);
-
-    tft.fillRect(0, DISPLAY_PANEL_H - 30, DISPLAY_PANEL_W, 30, COL_BG);
-    tft.setTextColor(COL_TITLE, COL_BG);
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%d of %d  -  touch to choose  -  starting in %d",
-             current + 1, sCount, secondsLeft);
-    tft.drawString(buf, 16, DISPLAY_PANEL_H - 26, 2);
 }
 
 void boot_menu_run(void) {
     TFT_eSPI &tft = panel_tft();
 
-    buildEntries();
-
-    /* Whatever scale this board was left at, whether or not there is a
-     * menu to show. */
-    display_set_scale(loadScale());
+    /* Before anything asks where a finger landed. A panel with no
+     * calibration maps presses with TFT_eSPI's defaults, which are
+     * nobody's panel in particular. */
+    chooser_apply_calibration();
+    if (!chooser_is_calibrated()) offerCalibration(tft);
 
     /* Nothing to choose between: don't make anyone look at a menu. */
-    if (sCount <= 1) return;
+    if (totalEntries() <= 1) {
+        display_set_scale(boot_scale_for_machine(machine_chosen_index()));
+        return;
+    }
 
-    int current = 0;
-    Serial.printf("menu: remembered machine %d, its entry %d, %d rows\n",
-                  machine_chosen_index(),
-                  machine_list[machine_chosen_index()]->selected_entry(), sCount);
-    for (int i = 0; i < sCount; i++) {
-        if (sEntries[i].machineIndex == machine_chosen_index() &&
-            sEntries[i].entry == machine_list[sEntries[i].machineIndex]->selected_entry()) {
-            current = i;
+    int chosenMachine = machine_chosen_index();
+    splash(tft, MENU_SECONDS);
+
+    uint32_t deadline = millis() + MENU_SECONDS * 1000;
+    int shown = MENU_SECONDS;
+    bool interrupted = false;
+
+    while ((int32_t)(deadline - millis()) > 0) {
+        uint16_t tx, ty;
+        if (tft.getTouch(&tx, &ty)) { interrupted = true; break; }
+        int left = (int)((deadline - millis()) / 1000) + 1;
+        if (left != shown) { shown = left; splash(tft, left); }
+        delay(20);
+    }
+
+    if (interrupted) {
+        /* Let go before the first screen appears, or the press that opened
+         * the chooser also picks something on it. */
+        while (tft.getTouchRawZ() >= 600) delay(20);
+
+        for (;;) {
+            int m = chooser_pick_machine(0);
+            if (m < 0) break;                    /* timed out: keep what we had */
+            int e = chooser_pick_entry(m, 1);
+            if (e < 0) continue;                 /* back: which machine again */
+            machine_choose(m, e);
+            chosenMachine = m;
             break;
         }
     }
 
-    /* An entry remembered from the serial console can be anywhere in a
-     * long list, so scroll to it rather than starting at the top. */
-    sTop = current - ROWS_SHOWN / 2;
-    if (sTop > sCount - ROWS_SHOWN) sTop = sCount - ROWS_SHOWN;
-    if (sTop < 0) sTop = 0;
-
-    applyTouchCalibration(tft);
-    tft.fillScreen(COL_BG);
-    drawMenu(tft, current, MENU_SECONDS);
-
-    uint32_t deadline = millis() + MENU_SECONDS * 1000;
-    int shown = MENU_SECONDS;
-    bool picked = false;
-
-    while ((int32_t)(deadline - millis()) > 0) {
-        uint16_t tx, ty;
-        if (tft.getTouch(&tx, &ty)) {
-            /* The scale button first: it changes a setting rather than
-             * making a choice, so it must not also start the machine. */
-            if ((int)ty >= btnY() && (int)ty < btnY() + BTN_H &&
-                (int)tx >= BTN_X && (int)tx < BTN_X + BTN_W) {
-                int next = display_get_scale() == 1 ? 2 : 1;
-                display_set_scale(next);
-                saveScale(next);
-                drawScaleButton(tft);
-                deadline = millis() + 60UL * 1000;   /* stop hurrying them */
-                delay(200);                          /* one tap, one change */
-                continue;
-            }
-
-            /* The scroll buttons. */
-            if ((int)tx >= SCROLL_X && (int)ty >= ROW_TOP &&
-                (int)ty < ROW_TOP + ROWS_SHOWN * ROW_HEIGHT) {
-                int half = ROW_TOP + (ROWS_SHOWN * ROW_HEIGHT) / 2;
-                sTop += ((int)ty < half) ? -ROWS_SHOWN : ROWS_SHOWN;
-                if (sTop > sCount - ROWS_SHOWN) sTop = sCount - ROWS_SHOWN;
-                if (sTop < 0) sTop = 0;
-                drawMenu(tft, current, 0);
-                deadline = millis() + 60UL * 1000;
-                delay(200);
-                continue;
-            }
-
-            int i = sTop + (((int)ty - ROW_TOP) / ROW_HEIGHT);
-            if ((int)tx < SCROLL_X && (int)ty >= ROW_TOP && i >= 0 && i < sCount) {
-                current = i;
-                picked = true;
-                drawMenu(tft, current, 0);
-                /* A tap is a decision: start it, and let go of the wait. */
-                delay(150);
-                break;
-            }
-            /* A tap anywhere else just stops the countdown, so nobody has
-             * to hurry while they read. */
-            deadline = millis() + 60UL * 1000;
-        }
-
-        int left = (int)((deadline - millis()) / 1000) + 1;
-        if (left != shown && left <= MENU_SECONDS) {
-            shown = left;
-            drawMenu(tft, current, left);
-        }
-        delay(20);
-    }
-
-    /* Only write a choice somebody made. Letting the countdown expire
-     * used to store whatever row happened to be highlighted, which
-     * quietly overwrote a selection made from the serial console when
-     * that selection was further down the list than the menu could show. */
-    if (picked) machine_choose(sEntries[current].machineIndex, sEntries[current].entry);
-    Serial.printf("menu: starting %s / %s\n",
-                  machine->name, machine->entry_name(machine->selected_entry()));
+    display_set_scale(boot_scale_for_machine(chosenMachine));
+    Serial.printf("menu: starting %s / %s, picture %s\n",
+                  machine->name, machine->entry_name(machine->selected_entry()),
+                  display_get_scale() == 1 ? "1:1" : "1.5x");
 
     tft.fillScreen(COL_BG);
 }

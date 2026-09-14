@@ -26,6 +26,8 @@
 #include "ble_keyboard.h"
 #include "sd_mount.h"
 #include "machine.h"
+#include "boot_menu.h"
+#include "chooser.h"
 #include "selector.h"
 #include "panel.h"
 #include <esp_system.h>
@@ -141,8 +143,10 @@ static void handleLine(char *line) {
             if (sscanf(line + 1, "%d", &scale) != 1 || (scale != 1 && scale != 2))
                 scale = display_get_scale() == 1 ? 2 : 1;   /* bare 'z' toggles */
             display_set_scale(scale);
-            Serial.printf("picture scale %s\n",
-                          scale == 1 ? "1:1 (crisp, small)" : "1.5x (nearly full screen)");
+            boot_remember_scale(machine_chosen_index(), scale);
+            Serial.printf("picture scale %s, remembered for %s\n",
+                          scale == 1 ? "1:1 (crisp, small)" : "1.5x (nearly full screen)",
+                          machine->name);
             break;
         }
 
@@ -221,6 +225,14 @@ static void handleLine(char *line) {
              * cost half of every frame. Anything at or above 600 counts as
              * a finger, which is the threshold TFT_eSPI itself uses. Press
              * the glass while this runs and watch the number. */
+            if (line[1] == ' ' && line[2] == 'c') {
+                chooser_calibrate();
+                break;
+            }
+            if (line[1] == ' ' && line[2] == 'x') {
+                chooser_forget_calibration();
+                break;
+            }
             Serial.println("touch pressure for 3s - press the screen (600+ is a finger)");
             for (int i = 0; i < 30; i++) {
                 uint16_t z = panel_tft().getTouchRawZ();
@@ -289,6 +301,7 @@ static void handleLine(char *line) {
             Serial.println("z [1|2]=scale  x <n>=test pattern  w <0|1>=byte swap");
             Serial.println("n <0|1>=sound  a [hz] [ms]=test tone  b <0|1>=BLE scan  k <0|1>=HID dump");
             Serial.println("m <0|1>=SD card  e [machine entry]=boot choice  o=selector  h=status");
+            Serial.println("u=touch pressure  u c=calibrate  u x=forget the calibration");
             if (machine->debug_help()[0]) Serial.println(machine->debug_help());
             break;
     }

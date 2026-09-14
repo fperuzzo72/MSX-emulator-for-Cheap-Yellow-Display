@@ -589,6 +589,8 @@ static int m_selected_entry(void) {
 
 const Machine spectrum_machine = {
     "ZX Spectrum 48K",
+    2,   /* 1.5x. It runs at twice the speed it needs, so the picture may
+          * as well fill the panel. */
     m_prealloc, m_run, m_ready, m_frames,
     m_hid, m_type, m_typing,
     m_screen_row, m_screen_mode, m_char_pattern, m_peek,
