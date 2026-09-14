@@ -18,6 +18,7 @@
 #include "ble_keyboard.h"
 #include "msx_keys.h"
 #include "selector.h"
+#include "display.h"
 #include "machine.h"
 #include "msx_display.h"
 
@@ -89,6 +90,10 @@ void Keyboard(void) {
             if (e >= 0) chosen = e;
             vTaskDelay(pdMS_TO_TICKS(20));
         }
+        /* The chooser painted the whole 480x320 panel; this machine only
+         * ever draws its own 256x192 in the middle of it, so without this
+         * the tiles stay in the surround for as long as the game runs. */
+        display_fill_panel(0);
         if (chosen >= 0) machine->switch_to(chosen);
     }
 

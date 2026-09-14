@@ -309,9 +309,14 @@ int chooser_pick_machine(int allowCancel) {
         tft.fillScreen(COL_BG);
         header("Which machine");
         for (int i = 0; i < n; i++) {
-            char sub[24];
-            snprintf(sub, sizeof(sub), "%d to choose from",
-                     machine_list[i]->entry_count());
+            char sub[28];
+            /* Reached from a running machine, this screen is mostly asked
+             * for in order to leave it, so say which one that is. */
+            if (allowCancel && i == machine_chosen_index())
+                snprintf(sub, sizeof(sub), "running now");
+            else
+                snprintf(sub, sizeof(sub), "%d to choose from",
+                         machine_list[i]->entry_count());
             tile(GAP + i * (w + GAP), y, w, h, machine_list[i]->name, sub, false);
         }
         footer(allowCancel ? "back" : 0,
@@ -326,10 +331,7 @@ int chooser_pick_machine(int allowCancel) {
             for (int i = 0; i < n; i++) {
                 int x = GAP + i * (w + GAP);
                 if (tx >= x && tx < x + w) {
-                    char sub[24];
-                    snprintf(sub, sizeof(sub), "%d to choose from",
-                             machine_list[i]->entry_count());
-                    flash(x, y, w, h, machine_list[i]->name, sub);
+                    flash(x, y, w, h, machine_list[i]->name, "");
                     return i;
                 }
             }

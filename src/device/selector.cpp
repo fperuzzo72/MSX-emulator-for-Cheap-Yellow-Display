@@ -18,6 +18,8 @@
 #include "chooser.h"
 #include "machine.h"
 
+#include "esp_system.h"
+
 static bool sActive;
 
 int selector_active(void) { return sActive ? 1 : 0; }
@@ -54,8 +56,15 @@ void selector_poll_open(void) {
     }
 }
 
-/* Called by the machine once it has stopped. Runs the whole chooser and
- * comes back with an entry, or -1 if nothing was picked. */
+/* Called by the machine once it has stopped. Runs the chooser and comes
+ * back with an entry, or -1 if nothing was picked.
+ *
+ * It opens on the groups for the machine that is running, because that is
+ * what somebody holding a finger on a game almost always wants. Going
+ * back from there does not close it but offers the other machine, and
+ * going back from that returns to the game - so it is still two presses
+ * to change your mind, and the other machine is no longer a power cycle
+ * away. */
 int selector_frame(void) {
     if (!sActive) return -1;
 
@@ -63,8 +72,26 @@ int selector_frame(void) {
      * the first screen it would press whatever is under it. */
     while (panel_tft().getTouchRawZ() >= TOUCH_Z) delay(20);
 
-    int chosen = chooser_pick_entry(machine_chosen_index(), 1);
+    int m = machine_chosen_index();
 
-    sActive = false;
-    return chosen;
+    for (;;) {
+        int chosen = chooser_pick_entry(m, 1);
+
+        if (chosen >= 0) {
+            sActive = false;
+            if (m == machine_chosen_index()) return chosen;
+
+            /* A different machine cannot be swapped in while this one is
+             * running: its RAM, its VRAM and its band buffer were cut out
+             * of the one big DRAM region at startup and belong to it. So
+             * remember the choice and come up as the other machine. */
+            machine_choose(m, chosen);
+            delay(80);
+            esp_restart();
+        }
+
+        int pick = chooser_pick_machine(1);
+        if (pick < 0) { sActive = false; return -1; }   /* back again: the game */
+        m = pick;
+    }
 }
