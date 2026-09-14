@@ -190,3 +190,33 @@ h                           heap, frame rate, keyboard state
 `t` feeds synthetic HID reports through the same US-International layer,
 dead keys and matrix rebuild that a real keyboard drives - it tests the
 real path, not a shortcut past it.
+
+## Two keys and a third: rollover
+
+A game that moves diagonally and shoots needs three keys at once, and
+plenty of keyboards cannot report three. The six key slots in a USB or
+BLE report are filled from a matrix scan, and a cheap matrix cannot
+always tell which three of its crossings are closed - so the third key
+simply does not arrive, or all six slots come back as `01`, which is
+ErrorRollOver: the keyboard saying it does not know.
+
+Nothing in the firmware can recover a key the keyboard never sent. What
+it can do is offer a key that does not go through those slots:
+
+**Right Ctrl is a second Space**, which is to say a second fire button.
+Modifiers are bits in a byte of their own, on their own matrix line, and
+they arrive whatever else is held down. Space still works as Space; this
+is the one that cannot be lost. Left Ctrl is still Ctrl, so Ctrl+PageDown
+still breaks a running program.
+
+To see which it is on your own keyboard, turn the HID dump on and hold
+the combination:
+
+```
+k 1
+```
+
+Each report is printed raw, and a report carrying `01` in a key slot is
+named as one the keyboard cannot resolve. If the three usages are all
+there and the game still does not fire, the fault is in this firmware and
+not in the keyboard.

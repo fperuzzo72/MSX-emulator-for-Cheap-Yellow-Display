@@ -604,9 +604,24 @@ void msx_keys_frame(void) {
     physShift = (mods & 0x22) ? 1 : 0; /* either Shift */
     forceShift = forceNoShift = 0;
 
-    if (mods & 0x11) state[M_ROW(K_CTRL)]  &= (unsigned char)~M_BIT(K_CTRL);
+    if (mods & 0x01) state[M_ROW(K_CTRL)]  &= (unsigned char)~M_BIT(K_CTRL);
     if (mods & 0x04) state[M_ROW(K_GRAPH)] &= (unsigned char)~M_BIT(K_GRAPH);
     /* Right Alt is AltGr: it belongs to this layer, not to the MSX. */
+
+    /* Right Ctrl is a second Space, which is to say a second fire button.
+     *
+     * This is not a preference, it is a way round a limit in the keyboard
+     * rather than in either machine. A USB or BLE keyboard reports up to
+     * six keys in six slots, and a cheap matrix cannot always resolve
+     * which three of them are down: hold two cursor keys for a diagonal
+     * and the third key often does not arrive at all, which in a game
+     * means the ship moves but will not shoot. Modifiers do not live in
+     * those slots. They are bits in a byte of their own, on their own
+     * matrix line, and they arrive whatever else is held.
+     *
+     * Space still works as Space. This is simply one that cannot be lost.
+     * Left Ctrl is still Ctrl, so Ctrl+PageDown still breaks a program. */
+    if (mods & 0x10) state[M_ROW(K_SPACE)] &= (unsigned char)~M_BIT(K_SPACE);
 
     for (i = 0; i < 6; i++) {
         unsigned char hid = keys[i];
